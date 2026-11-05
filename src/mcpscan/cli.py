@@ -1,14 +1,16 @@
 """Command Line Interface for mcpscan."""
 
+import asyncio
 import sys
 from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 from mcpscan import __version__
-from mcpscan.models import PostureGrade, Severity
+from mcpscan.connector import MCPConnector, MCPConnectorError
+from mcpscan.engine import SecurityEngine
+from mcpscan.reporters.terminal import TerminalReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -16,6 +18,8 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+reporter = TerminalReporter(console)
+engine = SecurityEngine()
 
 
 def version_callback(value: bool):
@@ -95,7 +99,31 @@ def scan(
         )
     )
 
-    console.print("[dim]Connecting and negotiating capabilities... (Engine pipeline initializing)[/dim]")
+    console.print("[dim]Connecting and negotiating capabilities...[/dim]")
+
+    connector = MCPConnector(timeout=float(timeout))
+    try:
+        if command:
+            manifest = asyncio.run(connector.connect_stdio(command))
+        else:
+            console.print("[bold red]SSE transport scanning will be available in next release.[/bold red]")
+            raise typer.Exit(code=1)
+    except MCPConnectorError as e:
+        console.print(Panel(f"[bold red]Connection Error:[/bold red] {str(e)}", border_style="red"))
+        raise typer.Exit(code=1)
+
+    # Execute Security Audit
+    report = engine.audit(manifest)
+
+    # Render Terminal Report
+    reporter.render(report)
+
+    # Check CI/CD Threshold
+    if report.score < fail_under:
+        console.print(
+            f"[bold red]CI/CD Gate Failed:[/bold red] Score [bold]{report.score}[/bold] is below threshold of [bold]{fail_under}[/bold].\n"
+        )
+        raise typer.Exit(code=2)
 
 
 if __name__ == "__main__":
