@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "Max", email = "amster842@gmail.com" }
+    { name = "Ansh", email = "anshvishwa1212@gmail.com" }
 ]
 keywords = [
     "mcp",
