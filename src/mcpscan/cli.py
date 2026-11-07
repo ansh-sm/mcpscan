@@ -11,6 +11,7 @@ from mcpscan import __version__
 from mcpscan.connector import MCPConnector, MCPConnectorError
 from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.terminal import TerminalReporter
+from mcpscan.reporters.sarif import SarifReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -19,6 +20,7 @@ app = typer.Typer(
 )
 console = Console()
 reporter = TerminalReporter(console)
+sarif_reporter = SarifReporter()
 engine = SecurityEngine()
 
 
@@ -117,6 +119,14 @@ def scan(
 
     # Render Terminal Report
     reporter.render(report)
+
+    # Export SARIF if requested
+    if sarif_output:
+        try:
+            sarif_reporter.save(report, sarif_output)
+            console.print(f"[bold green]✓[/bold green] SARIF 2.1.0 report exported to: [bold cyan]{sarif_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write SARIF report:[/bold red] {str(e)}")
 
     # Check CI/CD Threshold
     if report.score < fail_under:
