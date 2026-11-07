@@ -107,8 +107,10 @@ def scan(
     try:
         if command:
             manifest = asyncio.run(connector.connect_stdio(command))
+        elif sse_url:
+            manifest = asyncio.run(connector.connect_sse(sse_url))
         else:
-            console.print("[bold red]SSE transport scanning will be available in next release.[/bold red]")
+            console.print("[bold red]Error: No valid transport specified.[/bold red]")
             raise typer.Exit(code=1)
     except MCPConnectorError as e:
         console.print(Panel(f"[bold red]Connection Error:[/bold red] {str(e)}", border_style="red"))
