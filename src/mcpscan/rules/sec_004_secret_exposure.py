@@ -28,7 +28,7 @@ class SecretExposureRule(BaseRule):
 
     # Known secret regex signatures
     SECRET_SIGNATURES = [
-        (r"(?i)\b(?:sk-[a-zA-Z0-9]{20,48})\b", "OpenAI / LLM API Key"),
+        (r"(?i)\b(?:sk-(?:live|proj)?[a-zA-Z0-9_\-]{20,80})\b", "OpenAI / LLM API Key"),
         (r"(?i)\b(?:ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59})\b", "GitHub Personal Access Token"),
         (r"(?i)\b(?:AKIA[0-9A-Z]{16})\b", "AWS Access Key ID"),
         (r"(?i)\b(?:xox[baprs]-[0-9a-zA-Z-]{10,48})\b", "Slack Token"),

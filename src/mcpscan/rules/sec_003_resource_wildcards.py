@@ -27,11 +27,11 @@ class BroadResourceURIRule(BaseRule):
 
     # Dangerous wildcard URI patterns
     DANGEROUS_URI_PATTERNS = [
-        (r"^file:\/\/\*{1,2}$", "Unrestricted filesystem root wildcard"),
-        (r"^file:\/\/\*\*?\/.*", "Recursive unrestricted filesystem template"),
-        (r"^file:\/\/(?:[A-Za-z]:)?\/$", "Direct root filesystem mount exposed"),
-        (r"^file:\/\/(?:etc|proc|sys|windows|system32)\b", "Direct access to sensitive operating system directory"),
-        (r"\.\.\/", "Path traversal sequence in declared URI"),
+        (r"^file:///\*{1,3}$", "Unrestricted filesystem root wildcard"),
+        (r"^file:///\*{1,2}/.*", "Recursive unrestricted filesystem template"),
+        (r"^file:///(?:[A-Za-z]:)?/$", "Direct root filesystem mount exposed"),
+        (r"^file:///(?:etc|proc|sys|windows|system32)\b", "Direct access to sensitive operating system directory"),
+        (r"\.\./", "Path traversal sequence in declared URI"),
     ]
 
     def evaluate(self, manifest: ServerManifest) -> List[Finding]:
