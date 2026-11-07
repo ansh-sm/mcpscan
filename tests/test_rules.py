@@ -103,3 +103,26 @@ def test_sec_004_detects_hardcoded_api_key():
     assert len(findings) == 1
     assert findings[0].rule_id == "MCP-SEC-004"
     assert findings[0].severity == Severity.CRITICAL
+def test_sec_005_detects_unbounded_array():
+    from mcpscan.rules.sec_005_token_exhaustion import TokenExhaustionRule
+    rule = TokenExhaustionRule()
+    manifest = ServerManifest(
+        tools=[
+            {
+                "name": "bulk_processor",
+                "description": "Process items",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                        }
+                    },
+                },
+            }
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 1
+    assert findings[0].rule_id == "MCP-SEC-005"
+    assert findings[0].severity == Severity.MEDIUM
