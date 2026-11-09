@@ -1,7 +1,7 @@
 """Abstract BaseRule interface and Registry for security analyzers."""
 
 from abc import ABC, abstractmethod
-from typing import List, Type
+from typing import List, Optional, Type
 from mcpscan.models import Finding, ServerManifest, Severity
 
 
@@ -32,16 +32,29 @@ class RuleRegistry:
         """Instantiate and register a rule class."""
         self._rules.append(rule_cls())
 
-    def run_all(self, manifest: ServerManifest) -> List[Finding]:
-        """Execute all registered rules against the target manifest."""
+    def run_all(
+        self,
+        manifest: ServerManifest,
+        enabled_rules: Optional[List[str]] = None,
+        disabled_rules: Optional[List[str]] = None,
+    ) -> List[Finding]:
+        """Execute registered rules against the target manifest with optional rule filtering."""
         findings: List[Finding] = []
+        enabled_set = {r.upper() for r in enabled_rules} if enabled_rules else None
+        disabled_set = {r.upper() for r in disabled_rules} if disabled_rules else set()
+
         for rule in self._rules:
+            rule_id_upper = rule.rule_id.upper()
+            if enabled_set and rule_id_upper not in enabled_set:
+                continue
+            if rule_id_upper in disabled_set:
+                continue
+
             try:
                 rule_findings = rule.evaluate(manifest)
                 findings.extend(rule_findings)
-            except Exception as e:
+            except Exception:
                 # Rule execution failure should never crash the entire scanner
-                # We log or capture it cleanly
                 pass
         return findings
 

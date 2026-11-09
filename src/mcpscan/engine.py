@@ -1,7 +1,7 @@
 """Security posture evaluation and scoring engine."""
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 from mcpscan.models import AssessmentReport, Finding, PostureGrade, ServerManifest, Severity
 from mcpscan.rules import registry
 
@@ -21,9 +21,18 @@ class SecurityEngine:
     def __init__(self, rule_registry=None):
         self.registry = rule_registry or registry
 
-    def audit(self, manifest: ServerManifest) -> AssessmentReport:
-        """Run all registered rules against the manifest and generate an AssessmentReport."""
-        findings: List[Finding] = self.registry.run_all(manifest)
+    def audit(
+        self,
+        manifest: ServerManifest,
+        enabled_rules: Optional[List[str]] = None,
+        disabled_rules: Optional[List[str]] = None,
+    ) -> AssessmentReport:
+        """Run registered rules against the manifest and generate an AssessmentReport."""
+        findings: List[Finding] = self.registry.run_all(
+            manifest,
+            enabled_rules=enabled_rules,
+            disabled_rules=disabled_rules,
+        )
 
         # Calculate composite score starting from 100
         score = 100
