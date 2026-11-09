@@ -91,6 +91,16 @@ def scan(
         "--fail-under",
         help="Exit with non-zero exit code if score falls below this threshold (for CI/CD gates).",
     ),
+    select_rules: Optional[str] = typer.Option(
+        None,
+        "--select",
+        help="Comma-separated list of Rule IDs to execute (e.g. 'MCP-SEC-001,MCP-SEC-002').",
+    ),
+    ignore_rules: Optional[str] = typer.Option(
+        None,
+        "--ignore",
+        help="Comma-separated list of Rule IDs to skip.",
+    ),
 ):
     """Scan an MCP server over stdio or SSE and audit its security posture."""
     if not command and not sse_url:
@@ -132,8 +142,16 @@ def scan(
         console.print(Panel(f"[bold red]Connection Error:[/bold red] {str(e)}", border_style="red"))
         raise typer.Exit(code=1)
 
+    # Parse rule filters
+    enabled_list = [r.strip() for r in select_rules.split(",") if r.strip()] if select_rules else None
+    disabled_list = [r.strip() for r in ignore_rules.split(",") if r.strip()] if ignore_rules else None
+
     # Execute Security Audit
-    report = engine.audit(manifest)
+    report = engine.audit(
+        manifest,
+        enabled_rules=enabled_list,
+        disabled_rules=disabled_list,
+    )
 
     # Render Terminal Report
     reporter.render(report)
