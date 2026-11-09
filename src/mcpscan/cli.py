@@ -13,6 +13,7 @@ from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.terminal import TerminalReporter
 from mcpscan.reporters.sarif import SarifReporter
 from mcpscan.reporters.json_reporter import JsonReporter
+from mcpscan.reporters.html_reporter import HtmlReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -23,6 +24,7 @@ console = Console()
 reporter = TerminalReporter(console)
 sarif_reporter = SarifReporter()
 json_reporter = JsonReporter()
+html_reporter = HtmlReporter()
 engine = SecurityEngine()
 
 
@@ -71,6 +73,12 @@ def scan(
         "--json",
         "-j",
         help="Path to export raw JSON security report.",
+    ),
+    html_output: Optional[str] = typer.Option(
+        None,
+        "--html",
+        "-H",
+        help="Path to export visual HTML security report dashboard.",
     ),
     timeout: int = typer.Option(
         15,
@@ -145,6 +153,14 @@ def scan(
             console.print(f"[bold green]✓[/bold green] JSON report exported to: [bold cyan]{json_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write JSON report:[/bold red] {str(e)}")
+
+    # Export HTML if requested
+    if html_output:
+        try:
+            html_reporter.save(report, html_output)
+            console.print(f"[bold green]✓[/bold green] Visual HTML Dashboard exported to: [bold cyan]{html_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write HTML report:[/bold red] {str(e)}")
 
     # Check CI/CD Threshold
     if report.score < fail_under:
