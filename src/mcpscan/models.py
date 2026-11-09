@@ -2,11 +2,13 @@
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
-    """Normalized vulnerability severity levels aligned with CVSS 3.1."""
+    """Normalized vulnerability severity levels."""
+
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
@@ -15,36 +17,42 @@ class Severity(str, Enum):
 
 
 class FindingLocation(BaseModel):
-    """Precise location of a detected security vulnerability."""
-    target_type: str = Field(..., description="Type of target (e.g., 'tool', 'resource', 'prompt')")
+    """Precise location of a detected security finding."""
+
+    target_type: str = Field(..., description="Type of target, such as tool, resource, or prompt")
     target_name: str = Field(..., description="Identifier name of the component")
-    path: Optional[str] = Field(None, description="JSON path within the schema/manifest (e.g., 'inputSchema.properties.command')")
+    path: Optional[str] = Field(None, description="JSON path within the schema or manifest")
 
 
 class Finding(BaseModel):
-    """An individual security finding detected by a rule."""
-    rule_id: str = Field(..., description="Unique rule identifier (e.g., 'MCP-SEC-001')")
-    title: str = Field(..., description="Short summary of the vulnerability")
-    severity: Severity = Field(..., description="Vulnerability severity level")
-    description: str = Field(..., description="Detailed explanation of the risk vector")
-    remediation: str = Field(..., description="Prescriptive guidance to remediate the vulnerability")
-    location: FindingLocation = Field(..., description="Component and path location where detected")
-    cwe: Optional[str] = Field(None, description="Common Weakness Enumeration ID (e.g., 'CWE-77')")
-    owasp_llm: Optional[str] = Field(None, description="OWASP Top 10 for LLMs category (e.g., 'LLM01: Prompt Injection')")
-    evidence: Optional[str] = Field(None, description="Snippet or value triggering the detection")
+    """An individual heuristic security finding."""
+
+    rule_id: str = Field(..., description="Unique rule identifier")
+    title: str = Field(..., description="Short summary of the finding")
+    severity: Severity = Field(..., description="Finding severity")
+    description: str = Field(..., description="Explanation of the detected risk indicator")
+    remediation: str = Field(..., description="Suggested remediation")
+    location: FindingLocation = Field(..., description="Component and path where detected")
+    cwe: Optional[str] = Field(None, description="Common Weakness Enumeration reference")
+    owasp_llm: Optional[str] = Field(None, description="OWASP LLM Top 10 reference")
+    evidence: Optional[str] = Field(None, description="Sanitized evidence that triggered the rule")
 
 
 class ServerManifest(BaseModel):
-    """Extracted snapshot of the MCP server's declared attack surface."""
-    server_info: Dict[str, Any] = Field(default_factory=dict, description="Implementation info returned during initialize")
-    capabilities: Dict[str, Any] = Field(default_factory=dict, description="Declared server capabilities")
-    tools: List[Dict[str, Any]] = Field(default_factory=list, description="Enumerated tools and JSON schemas")
-    resources: List[Dict[str, Any]] = Field(default_factory=list, description="Declared static and dynamic resources")
-    prompts: List[Dict[str, Any]] = Field(default_factory=list, description="Declared system prompt templates")
+    """Snapshot of an MCP server's declared attack surface."""
+
+    server_info: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
+    tools: List[Dict[str, Any]] = Field(default_factory=list)
+    resources: List[Dict[str, Any]] = Field(default_factory=list)
+    prompts: List[Dict[str, Any]] = Field(default_factory=list)
+    scan_complete: bool = Field(True, description="Whether all advertised scan stages completed")
+    scan_errors: List[str] = Field(default_factory=list, description="Sanitized scan-stage failures")
 
 
 class PostureGrade(str, Enum):
-    """Human-readable posture health grade."""
+    """Human-readable summary grade for the heuristic score."""
+
     A_PLUS = "A+"
     A = "A"
     B = "B"
@@ -54,13 +62,16 @@ class PostureGrade(str, Enum):
 
 
 class AssessmentReport(BaseModel):
-    """Unified security posture evaluation report."""
+    """Unified security assessment report; findings are heuristic, not a certification."""
+
     server_name: str
     server_version: str
     grade: PostureGrade
-    score: int = Field(..., ge=0, le=100, description="0-100 normalized security posture score")
+    score: int = Field(..., ge=0, le=100, description="Heuristic score from 0 to 100")
     findings: List[Finding] = Field(default_factory=list)
     tools_count: int
     resources_count: int
     prompts_count: int
     scan_timestamp: str
+    scan_complete: bool = Field(True, description="False means results must not be interpreted as clean")
+    scan_errors: List[str] = Field(default_factory=list, description="Sanitized scan-stage failures")
