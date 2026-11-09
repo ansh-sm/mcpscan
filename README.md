@@ -53,6 +53,8 @@ mcpscan scan -c "node build/index.js" --sarif results.sarif --fail-under 80
 | **`MCP-SEC-003`** | **Broad Resource URI Traversal** | `HIGH` | CWE-22<br/>OWASP LLM06 | Identifies unrestricted wildcard filesystem templates (`file:///**`), root mounts (`file:///`), and directory traversal patterns (`../`). |
 | **`MCP-SEC-004`** | **Credential & Key Exposure** | `CRITICAL` | CWE-798<br/>OWASP LLM02 | Audits schemas and defaults for API keys (OpenAI, Anthropic, GitHub, AWS, JWTs) and flags high Shannon entropy secrets ($H > 4.5$). |
 | **`MCP-SEC-005`** | **Token Denial of Service (DoS)** | `MEDIUM` | CWE-400<br/>OWASP LLM04 | Detects unbounded array parameters lacking `maxItems` and bulk text inputs lacking `maxLength`, protecting host models from context window exhaustion. |
+| **`MCP-SEC-006`** | **SSRF / Unconstrained Network Egress** | `HIGH` | CWE-918<br/>OWASP LLM06 | Identifies unrestricted external URL and webhook parameters that lack protocol constraints, domain whitelists, or internal IP range boundaries (e.g. metadata services). |
+| **`MCP-SEC-007`** | **Prompt Template Injection** | `HIGH` | CWE-77<br/>OWASP LLM01 | Detects sensitive system prompt template arguments (`role`, `system_prompt`, `instructions`) that allow adversaries to hijack system directives. |
 
 ---
 
