@@ -3,158 +3,126 @@
 import asyncio
 import shlex
 import sys
-from typing import Optional
+from typing import Any, Dict, List
+
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
 
 from mcpscan.models import ServerManifest
 
 
 class MCPConnectorError(Exception):
     """Raised when transport connection or capability negotiation fails."""
-    pass
 
 
 class MCPConnector:
-    """Resilient connector for MCP servers with timeout protection and manifest extraction."""
+    """Connector for MCP servers with timeout protection and honest scan status."""
 
     def __init__(self, timeout: float = 15.0):
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than zero")
         self.timeout = timeout
 
     async def connect_stdio(self, command_str: str) -> ServerManifest:
-        """Connect to a server over standard I/O (stdio) and extract full attack surface."""
-        # Split command into executable and arguments safely
-        if sys.platform == "win32":
-            # On Windows, preserve python / node executable paths
-            parts = shlex.split(command_str, posix=False)
-        else:
-            parts = shlex.split(command_str, posix=True)
-
+        """Connect over stdio and extract the server's declared attack surface."""
+        parts = shlex.split(command_str, posix=sys.platform != "win32")
         if not parts:
             raise MCPConnectorError("Command cannot be empty.")
 
-        executable = parts[0]
-        args = parts[1:]
-
-        server_params = StdioServerParameters(
-            command=executable,
-            args=args,
-            env=None,
-        )
-
+        params = StdioServerParameters(command=parts[0], args=parts[1:], env=None)
         try:
-            return await asyncio.wait_for(
-                self._run_stdio_session(server_params),
-                timeout=self.timeout,
-            )
-        except asyncio.TimeoutError:
-            raise MCPConnectorError(f"Connection timed out after {self.timeout}s.")
-        except Exception as e:
-            if isinstance(e, MCPConnectorError):
+            return await asyncio.wait_for(self._run_stdio_session(params), timeout=self.timeout)
+        except asyncio.TimeoutError as exc:
+            raise MCPConnectorError(f"Connection timed out after {self.timeout}s.") from exc
+        except Exception as exc:
+            if isinstance(exc, MCPConnectorError):
                 raise
-            raise MCPConnectorError(f"Failed to connect to MCP server: {str(e)}") from e
+            # Avoid echoing target-controlled exception text into logs/reports.
+            raise MCPConnectorError(f"Failed to connect to MCP server ({type(exc).__name__}).") from exc
 
     async def connect_sse(self, sse_url: str) -> ServerManifest:
-        """Connect to a remote server over HTTP/SSE and extract full attack surface."""
-        if not sse_url or not (sse_url.startswith("http://") or sse_url.startswith("https://")):
-            raise MCPConnectorError(f"Invalid SSE URL: '{sse_url}'. Must begin with http:// or https://")
-
+        """Connect over HTTP/SSE and extract the server's declared attack surface."""
+        if not sse_url or not sse_url.startswith(("http://", "https://")):
+            raise MCPConnectorError("Invalid SSE URL. Must begin with http:// or https://")
         try:
-            return await asyncio.wait_for(
-                self._run_sse_session(sse_url),
-                timeout=self.timeout,
-            )
-        except asyncio.TimeoutError:
-            raise MCPConnectorError(f"SSE connection timed out after {self.timeout}s.")
-        except Exception as e:
-            if isinstance(e, MCPConnectorError):
+            return await asyncio.wait_for(self._run_sse_session(sse_url), timeout=self.timeout)
+        except asyncio.TimeoutError as exc:
+            raise MCPConnectorError(f"SSE connection timed out after {self.timeout}s.") from exc
+        except Exception as exc:
+            if isinstance(exc, MCPConnectorError):
                 raise
-            raise MCPConnectorError(f"Failed to connect to MCP SSE server: {str(e)}") from e
+            raise MCPConnectorError(f"Failed to connect to MCP SSE server ({type(exc).__name__}).") from exc
 
     async def _run_sse_session(self, sse_url: str) -> ServerManifest:
-        """Internal worker executing handshake and enumeration inside SSE context."""
         async with sse_client(sse_url) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 return await self._extract_manifest_from_session(session)
 
-    async def _run_stdio_session(self, server_params: StdioServerParameters) -> ServerManifest:
-        """Internal worker executing handshake and enumeration inside stdio context."""
-        async with stdio_client(server_params) as (read_stream, write_stream):
+    async def _run_stdio_session(self, params: StdioServerParameters) -> ServerManifest:
+        async with stdio_client(params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 return await self._extract_manifest_from_session(session)
 
     async def _extract_manifest_from_session(self, session: ClientSession) -> ServerManifest:
-        """Shared manifest extractor across both stdio and sse sessions."""
-        init_result = await session.initialize()
-
-        # Support both MCP v1 (camelCase) and v2 (snake_case)
-        server_info_obj = getattr(init_result, "server_info", None) or getattr(init_result, "serverInfo", None)
+        """Initialize and enumerate advertised surfaces; record failures explicitly."""
+        initialized = await session.initialize()
+        server_info_obj = getattr(initialized, "server_info", None) or getattr(initialized, "serverInfo", None)
         server_info = {
             "name": getattr(server_info_obj, "name", "unknown") if server_info_obj else "unknown",
             "version": getattr(server_info_obj, "version", "unknown") if server_info_obj else "unknown",
         }
-        
-        capabilities = getattr(init_result, "capabilities", None)
-        cap_dict = capabilities.model_dump() if hasattr(capabilities, "model_dump") else {}
+        capabilities = getattr(initialized, "capabilities", None)
+        cap_dict: Dict[str, Any] = capabilities.model_dump() if hasattr(capabilities, "model_dump") else {}
+        errors: List[str] = []
 
-        # 1. Enumerate Tools
-        tools_list = []
+        tools = []
         try:
-            tools_result = await session.list_tools()
-            for tool in tools_result.tools:
-                input_schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})
-                if hasattr(input_schema, "model_dump"):
-                    input_schema = input_schema.model_dump()
-                elif not isinstance(input_schema, dict):
-                    input_schema = dict(input_schema) if input_schema else {}
+            result = await session.list_tools()
+            for tool in result.tools:
+                schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})
+                if hasattr(schema, "model_dump"):
+                    schema = schema.model_dump()
+                elif not isinstance(schema, dict):
+                    schema = dict(schema) if schema else {}
+                tools.append({"name": tool.name, "description": tool.description or "", "inputSchema": schema})
+        except Exception as exc:
+            errors.append(f"tools enumeration failed ({type(exc).__name__})")
 
-                tools_list.append({
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "inputSchema": input_schema,
+        resources = []
+        try:
+            result = await session.list_resources()
+            for resource in result.resources:
+                resources.append({
+                    "uri": str(resource.uri),
+                    "name": resource.name or "",
+                    "description": resource.description or "",
+                    "mimeType": getattr(resource, "mimeType", None),
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"resources enumeration failed ({type(exc).__name__})")
 
-        # 2. Enumerate Resources
-        resources_list = []
+        prompts = []
         try:
-            res_result = await session.list_resources()
-            for res in res_result.resources:
-                resources_list.append({
-                    "uri": str(res.uri),
-                    "name": res.name or "",
-                    "description": res.description or "",
-                    "mimeType": getattr(res, "mimeType", None),
-                })
-        except Exception:
-            pass
-
-        # 3. Enumerate Prompts
-        prompts_list = []
-        try:
-            prompts_result = await session.list_prompts()
-            for p in prompts_result.prompts:
-                prompts_list.append({
-                    "name": p.name,
-                    "description": p.description or "",
+            result = await session.list_prompts()
+            for prompt in result.prompts:
+                prompts.append({
+                    "name": prompt.name,
+                    "description": prompt.description or "",
                     "arguments": [
-                        {
-                            "name": a.name,
-                            "description": a.description or "",
-                            "required": getattr(a, "required", False),
-                        }
-                        for a in getattr(p, "arguments", []) or []
+                        {"name": arg.name, "description": arg.description or "", "required": getattr(arg, "required", False)}
+                        for arg in getattr(prompt, "arguments", []) or []
                     ],
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"prompts enumeration failed ({type(exc).__name__})")
 
         return ServerManifest(
             server_info=server_info,
             capabilities=cap_dict,
-            tools=tools_list,
-            resources=resources_list,
-            prompts=prompts_list,
+            tools=tools,
+            resources=resources,
+            prompts=prompts,
+            scan_complete=not errors,
+            scan_errors=errors,
         )
