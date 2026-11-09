@@ -1,16 +1,24 @@
 """Integration tests for HTML reporting and rule filtering flags."""
 
 import json
+import os
+import sys
 import pytest
 from mcpscan.connector import MCPConnector
 from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.html_reporter import HtmlReporter
 
+CMD_VULN_SERVER = (
+    r".\.venv\Scripts\python tests/fixtures/vulnerable_server.py"
+    if os.path.exists(r".\.venv\Scripts\python.exe")
+    else f"{sys.executable} tests/fixtures/vulnerable_server.py"
+)
+
 
 @pytest.mark.asyncio
 async def test_html_dashboard_generation(tmp_path):
     connector = MCPConnector(timeout=10.0)
-    manifest = await connector.connect_stdio(r".\.venv\Scripts\python tests/fixtures/vulnerable_server.py")
+    manifest = await connector.connect_stdio(CMD_VULN_SERVER)
     
     engine = SecurityEngine()
     report = engine.audit(manifest)
@@ -29,7 +37,7 @@ async def test_html_dashboard_generation(tmp_path):
 @pytest.mark.asyncio
 async def test_rule_filtering_select_and_ignore():
     connector = MCPConnector(timeout=10.0)
-    manifest = await connector.connect_stdio(r".\.venv\Scripts\python tests/fixtures/vulnerable_server.py")
+    manifest = await connector.connect_stdio(CMD_VULN_SERVER)
     
     engine = SecurityEngine()
 

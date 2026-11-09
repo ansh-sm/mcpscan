@@ -1,17 +1,31 @@
 """Integration tests for end-to-end scanner execution and SARIF generation."""
 
 import json
+import os
+import sys
 import pytest
 from mcpscan.connector import MCPConnector
 from mcpscan.engine import SecurityEngine
 from mcpscan.models import PostureGrade, Severity
 from mcpscan.reporters.sarif import SarifReporter
 
+CMD_SMOKE_SERVER = (
+    r".\.venv\Scripts\python tests/fixtures/smoke_server.py"
+    if os.path.exists(r".\.venv\Scripts\python.exe")
+    else f"{sys.executable} tests/fixtures/smoke_server.py"
+)
+
+CMD_VULN_SERVER = (
+    r".\.venv\Scripts\python tests/fixtures/vulnerable_server.py"
+    if os.path.exists(r".\.venv\Scripts\python.exe")
+    else f"{sys.executable} tests/fixtures/vulnerable_server.py"
+)
+
 
 @pytest.mark.asyncio
 async def test_e2e_clean_server(tmp_path):
     connector = MCPConnector(timeout=10.0)
-    manifest = await connector.connect_stdio(r".\.venv\Scripts\python tests/fixtures/smoke_server.py")
+    manifest = await connector.connect_stdio(CMD_SMOKE_SERVER)
     
     engine = SecurityEngine()
     report = engine.audit(manifest)
@@ -34,7 +48,7 @@ async def test_e2e_clean_server(tmp_path):
 @pytest.mark.asyncio
 async def test_e2e_vulnerable_server(tmp_path):
     connector = MCPConnector(timeout=10.0)
-    manifest = await connector.connect_stdio(r".\.venv\Scripts\python tests/fixtures/vulnerable_server.py")
+    manifest = await connector.connect_stdio(CMD_VULN_SERVER)
     
     engine = SecurityEngine()
     report = engine.audit(manifest)
