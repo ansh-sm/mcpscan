@@ -168,3 +168,83 @@ def test_sec_007_detects_insecure_prompt_template():
     assert len(findings) == 1
     assert findings[0].rule_id == "MCP-SEC-007"
     assert findings[0].severity == Severity.HIGH
+
+
+def test_sec_008_detects_env_file_resource():
+    """MCP-SEC-008: resource URI referencing .env file should be flagged."""
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    rule = SensitiveResourceSnoopingRule()
+    manifest = ServerManifest(
+        resources=[
+            {"uri": "file:///app/.env", "name": "app_env"},
+            {"uri": "file:///app/.env.production", "name": "prod_env"},
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 2
+    assert all(f.rule_id == "MCP-SEC-008" for f in findings)
+    assert all(f.severity == Severity.HIGH for f in findings)
+    assert ".env" in findings[0].evidence
+
+
+def test_sec_008_detects_ssh_key_resource():
+    """MCP-SEC-008: resource pointing to .ssh directory should be flagged."""
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    rule = SensitiveResourceSnoopingRule()
+    manifest = ServerManifest(
+        resources=[
+            {"uri": "file:///home/user/.ssh/id_rsa", "name": "ssh_key"},
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) >= 1
+    assert findings[0].rule_id == "MCP-SEC-008"
+    assert "ssh" in findings[0].evidence.lower()
+
+
+def test_sec_008_detects_aws_credentials_resource():
+    """MCP-SEC-008: resource referencing AWS credentials should be flagged."""
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    rule = SensitiveResourceSnoopingRule()
+    manifest = ServerManifest(
+        resources=[
+            {"uri": "file:///home/user/.aws/credentials", "name": "aws_creds"},
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 1
+    assert "AWS" in findings[0].evidence
+
+
+def test_sec_008_detects_environment_variable_dump():
+    """MCP-SEC-008: resource exposing os.environ should be flagged."""
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    rule = SensitiveResourceSnoopingRule()
+    manifest = ServerManifest(
+        resources=[
+            {
+                "uri": "env://system",
+                "name": "env_dump",
+                "description": "Dumps all environment variables from os.environ",
+            },
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) >= 1
+    env_findings = [f for f in findings if "environment" in f.title.lower()]
+    assert len(env_findings) == 1
+    assert "environ" in env_findings[0].evidence.lower()
+
+
+def test_sec_008_clean_resource_no_findings():
+    """MCP-SEC-008: safe resource URIs should not produce findings."""
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    rule = SensitiveResourceSnoopingRule()
+    manifest = ServerManifest(
+        resources=[
+            {"uri": "file:///app/data/reports.csv", "name": "reports"},
+            {"uri": "https://api.example.com/data", "name": "api_data"},
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 0
