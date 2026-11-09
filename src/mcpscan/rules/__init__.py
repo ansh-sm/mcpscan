@@ -6,6 +6,7 @@ from mcpscan.rules.sec_002_excessive_execution import ExcessiveExecutionRule
 from mcpscan.rules.sec_003_resource_wildcards import BroadResourceURIRule
 from mcpscan.rules.sec_004_secret_exposure import SecretExposureRule
 from mcpscan.rules.sec_005_token_exhaustion import TokenExhaustionRule
+from mcpscan.rules.sec_006_ssrf_egress import SSRFNetworkEgressRule
 
 # Register default core rules
 registry.register(ToolPoisoningRule)
@@ -13,6 +14,7 @@ registry.register(ExcessiveExecutionRule)
 registry.register(BroadResourceURIRule)
 registry.register(SecretExposureRule)
 registry.register(TokenExhaustionRule)
+registry.register(SSRFNetworkEgressRule)
 
 __all__ = [
     "registry",
@@ -21,4 +23,5 @@ __all__ = [
     "BroadResourceURIRule",
     "SecretExposureRule",
     "TokenExhaustionRule",
+    "SSRFNetworkEgressRule",
 ]
