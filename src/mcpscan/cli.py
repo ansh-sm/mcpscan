@@ -12,6 +12,7 @@ from mcpscan.connector import MCPConnector, MCPConnectorError
 from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.terminal import TerminalReporter
 from mcpscan.reporters.sarif import SarifReporter
+from mcpscan.reporters.json_reporter import JsonReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -21,6 +22,7 @@ app = typer.Typer(
 console = Console()
 reporter = TerminalReporter(console)
 sarif_reporter = SarifReporter()
+json_reporter = JsonReporter()
 engine = SecurityEngine()
 
 
@@ -63,6 +65,12 @@ def scan(
         "--sarif",
         "-s",
         help="Path to export OASIS SARIF 2.1.0 security report.",
+    ),
+    json_output: Optional[str] = typer.Option(
+        None,
+        "--json",
+        "-j",
+        help="Path to export raw JSON security report.",
     ),
     timeout: int = typer.Option(
         15,
@@ -129,6 +137,14 @@ def scan(
             console.print(f"[bold green]✓[/bold green] SARIF 2.1.0 report exported to: [bold cyan]{sarif_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write SARIF report:[/bold red] {str(e)}")
+
+    # Export JSON if requested
+    if json_output:
+        try:
+            json_reporter.save(report, json_output)
+            console.print(f"[bold green]✓[/bold green] JSON report exported to: [bold cyan]{json_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write JSON report:[/bold red] {str(e)}")
 
     # Check CI/CD Threshold
     if report.score < fail_under:
