@@ -8,6 +8,7 @@ from mcpscan.rules.sec_004_secret_exposure import SecretExposureRule
 from mcpscan.rules.sec_005_token_exhaustion import TokenExhaustionRule
 from mcpscan.rules.sec_006_ssrf_egress import SSRFNetworkEgressRule
 from mcpscan.rules.sec_007_prompt_template_injection import DynamicPromptInjectionRule
+from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
 
 # Register default core rules
 registry.register(ToolPoisoningRule)
@@ -17,6 +18,7 @@ registry.register(SecretExposureRule)
 registry.register(TokenExhaustionRule)
 registry.register(SSRFNetworkEgressRule)
 registry.register(DynamicPromptInjectionRule)
+registry.register(SensitiveResourceSnoopingRule)
 
 __all__ = [
     "registry",
@@ -27,4 +29,5 @@ __all__ = [
     "TokenExhaustionRule",
     "SSRFNetworkEgressRule",
     "DynamicPromptInjectionRule",
+    "SensitiveResourceSnoopingRule",
 ]
