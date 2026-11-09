@@ -126,3 +126,45 @@ def test_sec_005_detects_unbounded_array():
     assert len(findings) == 1
     assert findings[0].rule_id == "MCP-SEC-005"
     assert findings[0].severity == Severity.MEDIUM
+def test_sec_006_detects_unconstrained_ssrf_url():
+    from mcpscan.rules.sec_006_ssrf_egress import SSRFNetworkEgressRule
+    rule = SSRFNetworkEgressRule()
+    manifest = ServerManifest(
+        tools=[
+            {
+                "name": "fetch_data",
+                "description": "Fetch data from URL",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "webhook_url": {"type": "string"},
+                    },
+                },
+            }
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 1
+    assert findings[0].rule_id == "MCP-SEC-006"
+    assert findings[0].severity == Severity.HIGH
+    assert "SSRF" in findings[0].cwe
+
+
+def test_sec_007_detects_insecure_prompt_template():
+    from mcpscan.rules.sec_007_prompt_template_injection import DynamicPromptInjectionRule
+    rule = DynamicPromptInjectionRule()
+    manifest = ServerManifest(
+        prompts=[
+            {
+                "name": "system_prompt_builder",
+                "description": "Builds system prompt",
+                "arguments": [
+                    {"name": "system_prompt", "description": "Raw system instructions", "required": True}
+                ],
+            }
+        ]
+    )
+    findings = rule.evaluate(manifest)
+    assert len(findings) == 1
+    assert findings[0].rule_id == "MCP-SEC-007"
+    assert findings[0].severity == Severity.HIGH
