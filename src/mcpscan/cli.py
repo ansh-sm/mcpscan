@@ -6,6 +6,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 from mcpscan import __version__
 from mcpscan.connector import MCPConnector, MCPConnectorError
@@ -14,6 +15,7 @@ from mcpscan.reporters.terminal import TerminalReporter
 from mcpscan.reporters.sarif import SarifReporter
 from mcpscan.reporters.json_reporter import JsonReporter
 from mcpscan.reporters.html_reporter import HtmlReporter
+from mcpscan.reporters.markdown_reporter import MarkdownReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -25,6 +27,7 @@ reporter = TerminalReporter(console)
 sarif_reporter = SarifReporter()
 json_reporter = JsonReporter()
 html_reporter = HtmlReporter()
+markdown_reporter = MarkdownReporter()
 engine = SecurityEngine()
 
 
@@ -79,6 +82,12 @@ def scan(
         "--html",
         "-H",
         help="Path to export visual HTML security report dashboard.",
+    ),
+    markdown_output: Optional[str] = typer.Option(
+        None,
+        "--markdown",
+        "-M",
+        help="Path to export portable Markdown security report (PR comments, Slack sharing).",
     ),
     timeout: int = typer.Option(
         15,
@@ -180,12 +189,61 @@ def scan(
         except Exception as e:
             console.print(f"[bold red]Failed to write HTML report:[/bold red] {str(e)}")
 
+    # Export Markdown if requested
+    if markdown_output:
+        try:
+            markdown_reporter.save(report, markdown_output)
+            console.print(f"[bold green]✓[/bold green] Markdown report exported to: [bold cyan]{markdown_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write Markdown report:[/bold red] {str(e)}")
+
     # Check CI/CD Threshold
     if report.score < fail_under:
         console.print(
             f"[bold red]CI/CD Gate Failed:[/bold red] Score [bold]{report.score}[/bold] is below threshold of [bold]{fail_under}[/bold].\n"
         )
         raise typer.Exit(code=2)
+
+
+@app.command("list-rules")
+def list_rules():
+    """Display all registered security rules with their IDs, severity, and descriptions."""
+    from mcpscan.rules import registry
+
+    table = Table(
+        title="mcpscan Registered Security Rules",
+        show_header=True,
+        header_style="bold cyan",
+        border_style="dim",
+        show_lines=True,
+    )
+    table.add_column("Rule ID", style="bold yellow", width=14)
+    table.add_column("Severity", justify="center", width=10)
+    table.add_column("Title", style="bold white", min_width=30)
+    table.add_column("CWE", style="dim", width=18)
+    table.add_column("OWASP LLM", style="dim", width=14)
+
+    severity_styles = {
+        "CRITICAL": "bold red",
+        "HIGH": "bold yellow",
+        "MEDIUM": "yellow",
+        "LOW": "cyan",
+        "INFO": "dim",
+    }
+
+    for rule in registry.registered_rules:
+        sev_style = severity_styles.get(rule.severity.value, "white")
+        table.add_row(
+            rule.rule_id,
+            f"[{sev_style}]{rule.severity.value}[/{sev_style}]",
+            rule.title,
+            rule.cwe.split(":")[0] if rule.cwe else "—",
+            rule.owasp_llm.split(":")[0] if rule.owasp_llm else "—",
+        )
+
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(registry.registered_rules)} rules registered[/dim]\n")
 
 
 if __name__ == "__main__":
