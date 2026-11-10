@@ -5,8 +5,14 @@ or unconstrained sensitive root directories exposed without scoping restrictions
 """
 
 import re
-from typing import List
-from mcpscan.models import Finding, FindingLocation, ServerManifest, Severity
+
+from mcpscan.models import (
+    Confidence,
+    Finding,
+    FindingLocation,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules.base import BaseRule
 
 
@@ -14,6 +20,7 @@ class BroadResourceURIRule(BaseRule):
     rule_id = "MCP-SEC-003"
     title = "Overly Broad Resource URI Template / Filesystem Traversal Risk"
     severity = Severity.HIGH
+    default_confidence = Confidence.HIGH
     description = (
         "The server declares resource URI templates with unrestricted wildcards (e.g. 'file:///**', 'file:///*') "
         "or scopes pointing directly to root/system paths without directory confinement, exposing sensitive host files."
@@ -34,8 +41,8 @@ class BroadResourceURIRule(BaseRule):
         (r"\.\./", "Path traversal sequence in declared URI"),
     ]
 
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
-        findings: List[Finding] = []
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
+        findings: list[Finding] = []
 
         for resource in manifest.resources:
             uri = resource.get("uri", "")
@@ -48,6 +55,7 @@ class BroadResourceURIRule(BaseRule):
                             rule_id=self.rule_id,
                             title=f"Risky Resource URI: {reason}",
                             severity=self.severity,
+                            confidence=Confidence.HIGH,
                             description=(
                                 f"Resource '{res_name}' exposes URI pattern '{uri}' which violates least-privilege "
                                 f"isolation: {reason}."

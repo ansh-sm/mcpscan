@@ -1,6 +1,5 @@
 """Unit test suite for mcpscan security rules."""
 
-import pytest
 from mcpscan.models import ServerManifest, Severity
 from mcpscan.rules.sec_001_tool_poisoning import ToolPoisoningRule
 from mcpscan.rules.sec_002_excessive_execution import ExcessiveExecutionRule
@@ -151,7 +150,9 @@ def test_sec_006_detects_unconstrained_ssrf_url():
 
 
 def test_sec_007_detects_insecure_prompt_template():
-    from mcpscan.rules.sec_007_prompt_template_injection import DynamicPromptInjectionRule
+    from mcpscan.rules.sec_007_prompt_template_injection import (
+        DynamicPromptInjectionRule,
+    )
     rule = DynamicPromptInjectionRule()
     manifest = ServerManifest(
         prompts=[
@@ -172,7 +173,9 @@ def test_sec_007_detects_insecure_prompt_template():
 
 def test_sec_008_detects_env_file_resource():
     """MCP-SEC-008: resource URI referencing .env file should be flagged."""
-    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import (
+        SensitiveResourceSnoopingRule,
+    )
     rule = SensitiveResourceSnoopingRule()
     manifest = ServerManifest(
         resources=[
@@ -189,7 +192,9 @@ def test_sec_008_detects_env_file_resource():
 
 def test_sec_008_detects_ssh_key_resource():
     """MCP-SEC-008: resource pointing to .ssh directory should be flagged."""
-    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import (
+        SensitiveResourceSnoopingRule,
+    )
     rule = SensitiveResourceSnoopingRule()
     manifest = ServerManifest(
         resources=[
@@ -204,7 +209,9 @@ def test_sec_008_detects_ssh_key_resource():
 
 def test_sec_008_detects_aws_credentials_resource():
     """MCP-SEC-008: resource referencing AWS credentials should be flagged."""
-    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import (
+        SensitiveResourceSnoopingRule,
+    )
     rule = SensitiveResourceSnoopingRule()
     manifest = ServerManifest(
         resources=[
@@ -218,7 +225,9 @@ def test_sec_008_detects_aws_credentials_resource():
 
 def test_sec_008_detects_environment_variable_dump():
     """MCP-SEC-008: resource exposing os.environ should be flagged."""
-    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import (
+        SensitiveResourceSnoopingRule,
+    )
     rule = SensitiveResourceSnoopingRule()
     manifest = ServerManifest(
         resources=[
@@ -238,7 +247,9 @@ def test_sec_008_detects_environment_variable_dump():
 
 def test_sec_008_clean_resource_no_findings():
     """MCP-SEC-008: safe resource URIs should not produce findings."""
-    from mcpscan.rules.sec_008_sensitive_resource_snooping import SensitiveResourceSnoopingRule
+    from mcpscan.rules.sec_008_sensitive_resource_snooping import (
+        SensitiveResourceSnoopingRule,
+    )
     rule = SensitiveResourceSnoopingRule()
     manifest = ServerManifest(
         resources=[

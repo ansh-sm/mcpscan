@@ -2,19 +2,30 @@
 
 Audits tool parameter defaults, schema descriptions, example payloads, and resource URIs
 for high-entropy secrets, bearer tokens, AWS credentials, and provider API keys (OpenAI, Anthropic, GitHub, etc.).
+
+Uses recursive schema traversal to detect secrets inside nested schemas.
 """
 
 import math
 import re
-from typing import Any, Dict, List, Optional
-from mcpscan.models import Finding, FindingLocation, ServerManifest, Severity
+from typing import Any
+
+from mcpscan.models import (
+    Confidence,
+    Finding,
+    FindingLocation,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules.base import BaseRule
+from mcpscan.schema_utils import walk_schema
 
 
 class SecretExposureRule(BaseRule):
     rule_id = "MCP-SEC-004"
     title = "Credential Leakage / Hardcoded Secret in Schema"
     severity = Severity.CRITICAL
+    default_confidence = Confidence.HIGH
     description = (
         "The server manifest exposes sensitive credentials, API keys, or high-entropy tokens "
         "within tool parameter defaults, descriptions, or resource URIs."
@@ -43,7 +54,7 @@ class SecretExposureRule(BaseRule):
             return 0.0
         entropy = 0.0
         length = len(data)
-        freq: Dict[str, int] = {}
+        freq: dict[str, int] = {}
         for char in data:
             freq[char] = freq.get(char, 0) + 1
         for count in freq.values():
@@ -51,21 +62,18 @@ class SecretExposureRule(BaseRule):
             entropy -= p * math.log2(p)
         return entropy
 
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
-        findings: List[Finding] = []
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
+        findings: list[Finding] = []
 
-        # 1. Audit Tools & inputSchema
+        # 1. Audit Tools & inputSchema via recursive traversal
         for tool in manifest.tools:
             tool_name = tool.get("name", "unnamed_tool")
             schema = tool.get("inputSchema", {})
             if isinstance(schema, dict):
-                properties = schema.get("properties", {})
-                if isinstance(properties, dict):
-                    for prop_name, prop_data in properties.items():
-                        if isinstance(prop_data, dict):
-                            findings.extend(
-                                self._audit_property(tool_name, prop_name, prop_data)
-                            )
+                for node in walk_schema(schema):
+                    findings.extend(
+                        self._audit_property(tool_name, node.name, node.schema, node.json_path)
+                    )
 
         # 2. Audit Resource URIs
         for resource in manifest.resources:
@@ -79,6 +87,7 @@ class SecretExposureRule(BaseRule):
                             rule_id=self.rule_id,
                             title=f"Secret exposed in resource URI: {sig_desc}",
                             severity=self.severity,
+                            confidence=Confidence.HIGH,
                             description=(
                                 f"Resource '{res_name}' contains a hardcoded credential ({sig_desc}) in its URI."
                             ),
@@ -101,10 +110,11 @@ class SecretExposureRule(BaseRule):
         self,
         tool_name: str,
         prop_name: str,
-        prop_data: Dict[str, Any],
-    ) -> List[Finding]:
-        findings: List[Finding] = []
-        path = f"inputSchema.properties.{prop_name}"
+        prop_data: dict[str, Any],
+        json_path: str,
+    ) -> list[Finding]:
+        findings: list[Finding] = []
+        path = f"inputSchema.{json_path}"
         location_name = f"{tool_name}.{prop_name}"
 
         # Check default value
@@ -117,6 +127,7 @@ class SecretExposureRule(BaseRule):
                             rule_id=self.rule_id,
                             title=f"Hardcoded {sig_desc} in parameter default",
                             severity=self.severity,
+                            confidence=Confidence.HIGH,
                             description=(
                                 f"Tool '{tool_name}' exposes parameter '{prop_name}' with a hardcoded {sig_desc} in its default value."
                             ),
@@ -139,8 +150,9 @@ class SecretExposureRule(BaseRule):
                 findings.append(
                     Finding(
                         rule_id=self.rule_id,
-                        title=f"High-entropy token detected in parameter default",
+                        title="High-entropy token detected in parameter default",
                         severity=Severity.HIGH,
+                        confidence=Confidence.MEDIUM,
                         description=(
                             f"Parameter '{prop_name}' has a default value with high Shannon entropy ({entropy:.2f}), "
                             "indicating a potential raw secret or encryption key."

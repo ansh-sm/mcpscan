@@ -1,20 +1,27 @@
 """Rule MCP-SEC-001: Tool Poisoning and Prompt Injection Detection.
 
 Detects covert prompt injection patterns, role-reversal directives,
-zero-width hidden Unicode, and markdown-based exfiltration payloads in tool descriptions.
+hidden zero-width Unicode, and markdown-based exfiltration payloads in tool descriptions.
 """
 
 import re
-import unicodedata
-from typing import List, Optional
-from mcpscan.models import Finding, FindingLocation, ServerManifest, Severity
+
+from mcpscan.models import (
+    Confidence,
+    Finding,
+    FindingLocation,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules.base import BaseRule
+from mcpscan.schema_utils import walk_schema
 
 
 class ToolPoisoningRule(BaseRule):
     rule_id = "MCP-SEC-001"
     title = "Tool Description Prompt Injection / Poisoning"
     severity = Severity.CRITICAL
+    default_confidence = Confidence.HIGH
     description = (
         "The tool or parameter description contains adversarial prompt injection sequences, "
         "hidden zero-width Unicode characters, system prompt override attempts, or markdown "
@@ -60,13 +67,13 @@ class ToolPoisoningRule(BaseRule):
         '\u202E': 'Right-to-Left Override',
     }
 
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
-        findings: List[Finding] = []
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
+        findings: list[Finding] = []
 
         for tool in manifest.tools:
             tool_name = tool.get("name", "unnamed_tool")
             desc = tool.get("description", "")
-            
+
             # Check tool description
             tool_finding = self._audit_text(
                 text=desc,
@@ -77,18 +84,17 @@ class ToolPoisoningRule(BaseRule):
             if tool_finding:
                 findings.append(tool_finding)
 
-            # Check parameter descriptions in inputSchema
+            # Check parameter descriptions in inputSchema using recursive traversal
             schema = tool.get("inputSchema", {})
-            properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
-            if isinstance(properties, dict):
-                for prop_name, prop_data in properties.items():
-                    if isinstance(prop_data, dict):
-                        prop_desc = prop_data.get("description", "")
+            if isinstance(schema, dict):
+                for node in walk_schema(schema):
+                    prop_desc = node.schema.get("description", "")
+                    if prop_desc:
                         param_finding = self._audit_text(
                             text=prop_desc,
                             target_type="tool_param",
-                            target_name=f"{tool_name}.{prop_name}",
-                            path=f"inputSchema.properties.{prop_name}.description",
+                            target_name=f"{tool_name}.{node.name}",
+                            path=f"inputSchema.{node.json_path}.description",
                         )
                         if param_finding:
                             findings.append(param_finding)
@@ -101,7 +107,7 @@ class ToolPoisoningRule(BaseRule):
         target_type: str,
         target_name: str,
         path: str,
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         if not text:
             return None
 
@@ -112,6 +118,7 @@ class ToolPoisoningRule(BaseRule):
                     rule_id=self.rule_id,
                     title=f"Hidden {name} detected in {target_type}",
                     severity=self.severity,
+                    confidence=Confidence.HIGH,
                     description=(
                         f"Found invisible Unicode control character ({name}) in '{target_name}'. "
                         "This is a common vector used in prompt injection to hide instructions from human review."
@@ -131,6 +138,7 @@ class ToolPoisoningRule(BaseRule):
                     rule_id=self.rule_id,
                     title=f"Adversarial prompt injection pattern in {target_type}",
                     severity=self.severity,
+                    confidence=Confidence.HIGH,
                     description=(
                         f"The text in '{target_name}' contains phrasing that instructs the model to ignore "
                         "prior instructions or override its guardrails."
@@ -147,19 +155,20 @@ class ToolPoisoningRule(BaseRule):
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 return Finding(
-                        rule_id=self.rule_id,
-                        title=f"Chat control delimiter injection in {target_type}",
-                        severity=Severity.HIGH,
-                        description=(
-                            f"The text in '{target_name}' embeds synthetic system/instruction delimiters "
-                            "that could trick model parsers into executing unauthorized system instructions."
-                        ),
-                        remediation=self.remediation,
-                        location=FindingLocation(target_type=target_type, target_name=target_name, path=path),
-                        cwe=self.cwe,
-                        owasp_llm=self.owasp_llm,
-                        evidence=match.group(0),
-                    )
+                    rule_id=self.rule_id,
+                    title=f"Chat control delimiter injection in {target_type}",
+                    severity=Severity.HIGH,
+                    confidence=Confidence.HIGH,
+                    description=(
+                        f"The text in '{target_name}' embeds synthetic system/instruction delimiters "
+                        "that could trick model parsers into executing unauthorized system instructions."
+                    ),
+                    remediation=self.remediation,
+                    location=FindingLocation(target_type=target_type, target_name=target_name, path=path),
+                    cwe=self.cwe,
+                    owasp_llm=self.owasp_llm,
+                    evidence=match.group(0),
+                )
 
         # Check 4: Markdown image exfiltration
         for pattern in self.EXFILTRATION_PATTERNS:
@@ -169,6 +178,7 @@ class ToolPoisoningRule(BaseRule):
                     rule_id=self.rule_id,
                     title=f"Automated markdown data exfiltration payload in {target_type}",
                     severity=self.severity,
+                    confidence=Confidence.HIGH,
                     description=(
                         f"The text in '{target_name}' constructs dynamic markdown image URLs designed "
                         "to exfiltrate context or tokens to an external endpoint."

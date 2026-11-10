@@ -7,8 +7,14 @@ LLM agents.
 """
 
 import re
-from typing import List
-from mcpscan.models import Finding, FindingLocation, ServerManifest, Severity
+
+from mcpscan.models import (
+    Confidence,
+    Finding,
+    FindingLocation,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules.base import BaseRule
 
 
@@ -16,6 +22,7 @@ class SensitiveResourceSnoopingRule(BaseRule):
     rule_id = "MCP-SEC-008"
     title = "Sensitive File & Environment Variable Snooping in Resource Declarations"
     severity = Severity.HIGH
+    default_confidence = Confidence.HIGH
     description = (
         "The MCP server declares resource URIs that reference sensitive filesystem paths "
         "or environment variable collections. Exposing files such as .env, .ssh/*, "
@@ -78,8 +85,8 @@ class SensitiveResourceSnoopingRule(BaseRule):
         re.IGNORECASE,
     )
 
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
-        findings: List[Finding] = []
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
+        findings: list[Finding] = []
 
         for resource in manifest.resources:
             uri = resource.get("uri", "")
@@ -99,7 +106,7 @@ class SensitiveResourceSnoopingRule(BaseRule):
         self,
         text: str,
         resource_name: str,
-        findings: List[Finding],
+        findings: list[Finding],
         source: str,
     ) -> None:
         """Scan text for sensitive filesystem path patterns."""
@@ -110,6 +117,7 @@ class SensitiveResourceSnoopingRule(BaseRule):
                         rule_id=self.rule_id,
                         title=f"Resource '{resource_name}' exposes {label}",
                         severity=self.severity,
+                        confidence=Confidence.HIGH,
                         description=(
                             f"Resource '{resource_name}' declares a {source} referencing "
                             f"'{label}', which may expose sensitive host credentials or "
@@ -134,7 +142,7 @@ class SensitiveResourceSnoopingRule(BaseRule):
         text: str,
         uri: str,
         resource_name: str,
-        findings: List[Finding],
+        findings: list[Finding],
     ) -> None:
         """Detect resource declarations that expose raw environment variables."""
         match = self.ENV_KEYWORDS.search(text)
@@ -144,6 +152,7 @@ class SensitiveResourceSnoopingRule(BaseRule):
                     rule_id=self.rule_id,
                     title=f"Resource '{resource_name}' exposes environment variables",
                     severity=Severity.HIGH,
+                    confidence=Confidence.HIGH,
                     description=(
                         f"Resource '{resource_name}' appears to expose host environment "
                         "variables, which commonly contain database URIs, API keys, "

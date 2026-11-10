@@ -2,17 +2,27 @@
 
 Audits tool parameter definitions and schemas for unconstrained network URL inputs,
 webhook destinations, or host targets lacking protocol, domain whitelist, or private CIDR validation.
+
+Uses recursive schema traversal to inspect nested URL parameters.
 """
 
-from typing import Any, Dict, List
-from mcpscan.models import Finding, FindingLocation, ServerManifest, Severity
+
+from mcpscan.models import (
+    Confidence,
+    Finding,
+    FindingLocation,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules.base import BaseRule
+from mcpscan.schema_utils import walk_schema
 
 
 class SSRFNetworkEgressRule(BaseRule):
     rule_id = "MCP-SEC-006"
     title = "Unconstrained Network Target / Server-Side Request Forgery (SSRF) Risk"
     severity = Severity.HIGH
+    default_confidence = Confidence.HIGH
     description = (
         "The tool defines a URL, webhook, or host address parameter without explicit protocol, "
         "domain whitelist, or private IP address restrictions, potentially allowing adversaries "
@@ -30,8 +40,8 @@ class SSRFNetworkEgressRule(BaseRule):
         "callback", "callback_url", "api_url", "host", "domain"
     }
 
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
-        findings: List[Finding] = []
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
+        findings: list[Finding] = []
 
         for tool in manifest.tools:
             tool_name = tool.get("name", "unnamed_tool")
@@ -39,39 +49,36 @@ class SSRFNetworkEgressRule(BaseRule):
             if not isinstance(schema, dict):
                 continue
 
-            properties = schema.get("properties", {})
-            if not isinstance(properties, dict):
-                continue
-
-            for prop_name, prop_data in properties.items():
-                if not isinstance(prop_data, dict):
-                    continue
-
-                if prop_name.lower() in self.URL_PARAM_NAMES:
+            for node in walk_schema(schema):
+                if node.name.lower() in self.URL_PARAM_NAMES:
+                    prop_data = node.schema
                     has_format = prop_data.get("format") == "uri"
                     has_pattern = "pattern" in prop_data
                     has_enum = "enum" in prop_data
 
                     # If the parameter accepts arbitrary URLs without pattern or enum restrictions
                     if not has_pattern and not has_enum:
-                        evidence_msg = f"Parameter '{prop_name}' lacks pattern/domain constraints"
+                        evidence_msg = f"Parameter '{node.name}' lacks pattern/domain constraints"
                         if not has_format:
                             evidence_msg += " and missing URI format validator"
+
+                        confidence = Confidence.HIGH if node.depth == 0 else Confidence.MEDIUM
 
                         findings.append(
                             Finding(
                                 rule_id=self.rule_id,
-                                title=f"Unconstrained URL parameter '{prop_name}' in tool '{tool_name}'",
+                                title=f"Unconstrained URL parameter '{node.name}' in tool '{tool_name}'",
                                 severity=self.severity,
+                                confidence=confidence,
                                 description=(
-                                    f"Tool '{tool_name}' accepts external URL parameter '{prop_name}' "
-                                    "without restricting target domains or enforcing private IP boundary protections."
+                                    f"Tool '{tool_name}' accepts external URL parameter '{node.name}' at path "
+                                    f"'{node.json_path}' without restricting target domains or enforcing private IP boundary protections."
                                 ),
                                 remediation=self.remediation,
                                 location=FindingLocation(
                                     target_type="tool_param",
-                                    target_name=f"{tool_name}.{prop_name}",
-                                    path=f"inputSchema.properties.{prop_name}",
+                                    target_name=f"{tool_name}.{node.name}",
+                                    path=f"inputSchema.{node.json_path}",
                                 ),
                                 cwe=self.cwe,
                                 owasp_llm=self.owasp_llm,
