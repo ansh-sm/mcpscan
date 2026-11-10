@@ -1,9 +1,9 @@
 """Abstract BaseRule interface and Registry for security analyzers."""
 
-from abc import ABC, abstractmethod
 import logging
-from typing import List, Optional, Type
-from mcpscan.models import Finding, ServerManifest, Severity
+from abc import ABC, abstractmethod
+
+from mcpscan.models import Confidence, Finding, ServerManifest, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -14,24 +14,24 @@ class BaseRule(ABC):
     rule_id: str
     title: str
     severity: Severity
+    default_confidence: Confidence = Confidence.MEDIUM
     description: str
     remediation: str
     cwe: str
     owasp_llm: str
 
     @abstractmethod
-    def evaluate(self, manifest: ServerManifest) -> List[Finding]:
+    def evaluate(self, manifest: ServerManifest) -> list[Finding]:
         """Evaluate server manifest and return list of security findings."""
-        pass
 
 
 class RuleRegistry:
     """Central registry and executor for registered security audit rules."""
 
     def __init__(self):
-        self._rules: List[BaseRule] = []
+        self._rules: list[BaseRule] = []
 
-    def register(self, rule_cls: Type[BaseRule]) -> None:
+    def register(self, rule_cls: type[BaseRule]) -> None:
         """Instantiate and register a rule class, rejecting duplicate identifiers."""
         rule = rule_cls()
         if any(existing.rule_id.casefold() == rule.rule_id.casefold() for existing in self._rules):
@@ -41,12 +41,12 @@ class RuleRegistry:
     def run_all(
         self,
         manifest: ServerManifest,
-        enabled_rules: Optional[List[str]] = None,
-        disabled_rules: Optional[List[str]] = None,
-        errors: Optional[List[str]] = None,
-    ) -> List[Finding]:
+        enabled_rules: list[str] | None = None,
+        disabled_rules: list[str] | None = None,
+        errors: list[str] | None = None,
+    ) -> list[Finding]:
         """Execute registered rules against the target manifest with optional rule filtering and error tracking."""
-        findings: List[Finding] = []
+        findings: list[Finding] = []
         enabled_set = {r.upper() for r in enabled_rules} if enabled_rules else None
         disabled_set = {r.upper() for r in disabled_rules} if disabled_rules else set()
 
@@ -67,7 +67,7 @@ class RuleRegistry:
         return findings
 
     @property
-    def registered_rules(self) -> List[BaseRule]:
+    def registered_rules(self) -> list[BaseRule]:
         return list(self._rules)
 
 
