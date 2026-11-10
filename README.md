@@ -5,11 +5,21 @@
 [![Security Specification](https://img.shields.io/badge/SARIF-2.1.0-green.svg)](https://sarifweb.azurewebsites.net/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Industrial-grade security posture analyzer and vulnerability scanner for Model Context Protocol (MCP) servers.**
+**Heuristic security posture analyzer and metadata scanner for Model Context Protocol (MCP) servers.**
 
-As the Model Context Protocol becomes the universal standard for LLM applications and agent tooling, insecure MCP servers introduce critical security risks into host AI agents: prompt injection via tool poisoning, arbitrary command execution, secret leaks, and unbounded token exhaustion.
+As the Model Context Protocol becomes the universal standard for LLM applications and agent tooling, insecure MCP servers introduce security risks into host AI agents: prompt injection via tool poisoning, arbitrary command execution, secret leaks, and unbounded token exhaustion.
 
-`mcpscan` connects to any MCP server over **stdio** or **HTTP/SSE**, inspects its declared attack surface, evaluates vulnerabilities against CWE & OWASP Top 10 for LLMs, and produces actionable terminal scorecards plus **OASIS SARIF 2.1.0** reports for automated CI/CD security gating.
+`mcpscan` connects to any MCP server over **stdio** or **HTTP/SSE**, inspects its declared attack surface, evaluates vulnerabilities against CWE & OWASP Top 10 for LLMs heuristics, and produces actionable terminal scorecards plus **OASIS SARIF 2.1.0**, JSON, Markdown, and HTML reports for CI/CD security gating.
+
+---
+
+## ⚠️ Scope & Limitations
+
+> [!NOTE]
+> `mcpscan` is a **static metadata scanner based on heuristic pattern matching**.
+> - **A clean scan does not prove a server is secure.** Runtime implementation vulnerabilities (e.g. underlying SQL injection, arbitrary code execution inside tool handlers) cannot be detected purely from metadata declarations.
+> - Heuristic rules may produce **false positives** on benign tools or **false negatives** on novel attack vectors.
+> - Always perform defense-in-depth reviews, sandbox tool execution environments, and apply runtime validation.
 
 ---
 
@@ -40,7 +50,23 @@ mcpscan scan --sse "http://localhost:8000/sse"
 ```bash
 mcpscan scan -c "node build/index.js" --sarif results.sarif --fail-under 80
 ```
-*Exits with code `2` if the server's posture score falls below the required threshold.*
+
+### 4. List Registered Rules
+
+```bash
+mcpscan list-rules
+```
+
+---
+
+## 🚦 Exit Codes
+
+| Exit Code | Meaning |
+| :---: | :--- |
+| **`0`** | Scan completed successfully; posture score meets or exceeds `--fail-under` threshold. |
+| **`1`** | Invalid arguments, transport/connection failure, or report file I/O error. |
+| **`2`** | Posture score fell below `--fail-under` threshold (CI/CD quality gate failed). |
+| **`3`** | Scan was incomplete (advertised capability listing failed or a rule evaluation errored). |
 
 ---
 
@@ -55,19 +81,7 @@ mcpscan scan -c "node build/index.js" --sarif results.sarif --fail-under 80
 | **`MCP-SEC-005`** | **Token Denial of Service (DoS)** | `MEDIUM` | CWE-400<br/>OWASP LLM04 | Detects unbounded array parameters lacking `maxItems` and bulk text inputs lacking `maxLength`, protecting host models from context window exhaustion. |
 | **`MCP-SEC-006`** | **SSRF / Unconstrained Network Egress** | `HIGH` | CWE-918<br/>OWASP LLM06 | Identifies unrestricted external URL and webhook parameters that lack protocol constraints, domain whitelists, or internal IP range boundaries (e.g. metadata services). |
 | **`MCP-SEC-007`** | **Prompt Template Injection** | `HIGH` | CWE-77<br/>OWASP LLM01 | Detects sensitive system prompt template arguments (`role`, `system_prompt`, `instructions`) that allow adversaries to hijack system directives. |
-
----
-
-## 📊 Terminal Dashboard Preview
-
-```text
-+---------------------- MCP Security Posture Assessment ----------------------+
-|                                                                             |
-|  Security Posture Grade:  A+   |  Score: 100/100                            |
-|  Server: ProductionToolbox (v1.2)  |  Surface: 8 Tools, 2 Resources         |
-|                                                                             |
-+-----------------------------------------------------------------------------+
-```
+| **`MCP-SEC-008`** | **Sensitive Resource Snooping** | `HIGH` | CWE-538<br/>OWASP LLM06 | Identifies resource declarations targeting sensitive files (`.env`, `.ssh/*`, `/etc/passwd`, AWS/GCP credentials, git credentials) or exposing host environment variables. |
 
 ---
 

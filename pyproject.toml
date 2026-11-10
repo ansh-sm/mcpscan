@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mcpscan"
 version = "0.1.0"
-description = "Industrial-grade security posture analyzer and vulnerability scanner for Model Context Protocol (MCP) servers."
+description = "MCP server metadata security scanner."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -52,5 +52,6 @@ mcpscan = "mcpscan.cli:app"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]
