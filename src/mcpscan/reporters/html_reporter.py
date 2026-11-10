@@ -32,6 +32,19 @@ class HtmlReporter:
             report.grade, ("#6b7280", "#f9fafb", "text-gray-700")
         )
 
+        incomplete_banner = ""
+        if not report.scan_complete:
+            err_items = "".join(f"<li>{html.escape(e)}</li>" for e in report.scan_errors)
+            incomplete_banner = f"""
+            <div style="background-color: #450a0a; border: 1px solid #ef4444; border-radius: 8px; padding: 1.2rem; margin-bottom: 2rem; color: #fecaca;">
+                <h3 style="color: #f87171; font-size: 1.1rem; margin-bottom: 0.5rem;">⚠️ Incomplete Scan Warning</h3>
+                <p style="margin-bottom: 0.5rem;">This scan did not complete all advertised stages. Findings and score represent partial results and must not be interpreted as establishing safety.</p>
+                <ul style="margin-left: 1.5rem; font-size: 0.9rem; color: #fca5a5;">
+                    {err_items}
+                </ul>
+            </div>
+            """
+
         rows_html: List[str] = []
         for f in report.findings:
             sev_fg, sev_bg = self.SEVERITY_BADGES.get(f.severity, ("#374151", "#e5e7eb"))
@@ -80,11 +93,12 @@ class HtmlReporter:
                 """
             )
 
-        findings_table_content = (
-            "".join(rows_html)
-            if rows_html
-            else '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #059669;"><strong>No security vulnerabilities detected. Server satisfies least-privilege standards!</strong></td></tr>'
-        )
+        if rows_html:
+            findings_table_content = "".join(rows_html)
+        elif report.scan_complete:
+            findings_table_content = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #059669;"><strong>No heuristic security indicators detected in scanned metadata.</strong><br><span style="font-size: 0.85rem; color: #94a3b8;">A clean scan does not guarantee complete security.</span></td></tr>'
+        else:
+            findings_table_content = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #eab308;"><strong>No findings detected, but the scan was incomplete.</strong><br><span style="font-size: 0.85rem; color: #94a3b8;">Absence of findings does not establish safety.</span></td></tr>'
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -215,6 +229,8 @@ class HtmlReporter:
             </div>
         </div>
 
+        {incomplete_banner}
+
         <div class="scorecard">
             <div class="card">
                 <div class="card-label">Posture Grade</div>
@@ -249,7 +265,7 @@ class HtmlReporter:
         </table>
 
         <div class="footer">
-            Generated with <a href="https://github.com/ansh-sm/mcpscan" style="color: #38bdf8; text-decoration: none;">mcpscan v{__version__}</a> &bull; Industrial-grade MCP Security Analyzer
+            Generated with <a href="https://github.com/ansh-sm/mcpscan" style="color: #38bdf8; text-decoration: none;">mcpscan v{__version__}</a> &bull; MCP server metadata security scanner
         </div>
     </div>
 </body>

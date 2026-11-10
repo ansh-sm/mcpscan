@@ -3,7 +3,7 @@
 import json
 from typing import Any, Dict, List
 from mcpscan import __version__
-from mcpscan.models import AssessmentReport, Finding, Severity
+from mcpscan.models import AssessmentReport, Severity
 
 
 class SarifReporter:
@@ -79,7 +79,22 @@ class SarifReporter:
             }
             results.append(result_item)
 
-        # 3. Assemble complete SARIF 2.1.0 document
+        # 3. Build invocation with honest execution status
+        invocation: Dict[str, Any] = {
+            "executionSuccessful": report.scan_complete,
+            "endTimeUtc": report.scan_timestamp,
+        }
+        if report.scan_errors:
+            invocation["toolExecutionNotifications"] = [
+                {
+                    "level": "warning",
+                    "message": {"text": err},
+                    "descriptor": {"id": "SCAN-INCOMPLETE"},
+                }
+                for err in report.scan_errors
+            ]
+
+        # 4. Assemble complete SARIF 2.1.0 document
         sarif_doc: Dict[str, Any] = {
             "$schema": self.SARIF_SCHEMA,
             "version": self.SARIF_VERSION,
@@ -93,12 +108,7 @@ class SarifReporter:
                             "rules": list(rules_map.values()),
                         }
                     },
-                    "invocations": [
-                        {
-                            "executionSuccessful": True,
-                            "endTimeUtc": report.scan_timestamp,
-                        }
-                    ],
+                    "invocations": [invocation],
                     "results": results,
                 }
             ],
