@@ -19,7 +19,7 @@ from mcpscan.reporters.markdown_reporter import MarkdownReporter
 
 app = typer.Typer(
     name="mcpscan",
-    help="Industrial-grade security posture analyzer and vulnerability scanner for MCP servers.",
+    help="Security posture analyzer and vulnerability scanner for MCP servers.",
     add_completion=False,
 )
 console = Console()
@@ -112,16 +112,12 @@ def scan(
     ),
 ):
     """Scan an MCP server over stdio or SSE and audit its security posture."""
+    if command and sse_url:
+        raise typer.BadParameter("Choose only one target: --command or --sse.")
     if not command and not sse_url:
-        console.print(
-            Panel(
-                "[bold red]Error:[/bold red] You must specify a target server via [bold yellow]--command[/bold yellow] (stdio) "
-                "or [bold yellow]--sse[/bold yellow] (HTTP/SSE).",
-                title="[bold red]Missing Target[/bold red]",
-                border_style="red",
-            )
-        )
-        raise typer.Exit(code=1)
+        raise typer.BadParameter("Specify a target using --command or --sse.")
+    if timeout <= 0:
+        raise typer.BadParameter("--timeout must be greater than zero.")
 
     target_str = command if command else sse_url
     transport_type = "stdio" if command else "SSE"
@@ -165,6 +161,8 @@ def scan(
     # Render Terminal Report
     reporter.render(report)
 
+    export_failed = False
+
     # Export SARIF if requested
     if sarif_output:
         try:
@@ -172,6 +170,7 @@ def scan(
             console.print(f"[bold green]✓[/bold green] SARIF 2.1.0 report exported to: [bold cyan]{sarif_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write SARIF report:[/bold red] {str(e)}")
+            export_failed = True
 
     # Export JSON if requested
     if json_output:
@@ -180,6 +179,7 @@ def scan(
             console.print(f"[bold green]✓[/bold green] JSON report exported to: [bold cyan]{json_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write JSON report:[/bold red] {str(e)}")
+            export_failed = True
 
     # Export HTML if requested
     if html_output:
@@ -188,6 +188,7 @@ def scan(
             console.print(f"[bold green]✓[/bold green] Visual HTML Dashboard exported to: [bold cyan]{html_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write HTML report:[/bold red] {str(e)}")
+            export_failed = True
 
     # Export Markdown if requested
     if markdown_output:
@@ -196,6 +197,20 @@ def scan(
             console.print(f"[bold green]✓[/bold green] Markdown report exported to: [bold cyan]{markdown_output}[/bold cyan]\n")
         except Exception as e:
             console.print(f"[bold red]Failed to write Markdown report:[/bold red] {str(e)}")
+            export_failed = True
+
+    if export_failed:
+        console.print("[bold red]One or more requested reports failed to export.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Warn if scan was incomplete
+    if not report.scan_complete:
+        console.print(
+            "[bold red]Scan incomplete. Do not treat this result as a clean scan.[/bold red]"
+        )
+        for error in report.scan_errors:
+            console.print(f"  - {error}")
+        raise typer.Exit(code=3)
 
     # Check CI/CD Threshold
     if report.score < fail_under:
