@@ -40,8 +40,10 @@ venv.bak/
 .coverage
 htmlcov/
 
-# Tooling
-.mypy_cache/
-.ruff_cache/
-.vscode/
-.idea/
+# Reports
+*.sarif
+*.html
+*.json
+!pyproject.toml
+!package.json
+!tsconfig.json
