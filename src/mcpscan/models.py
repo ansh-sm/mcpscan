@@ -46,8 +46,14 @@ class ServerManifest(BaseModel):
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     resources: List[Dict[str, Any]] = Field(default_factory=list)
     prompts: List[Dict[str, Any]] = Field(default_factory=list)
-    scan_complete: bool = Field(True, description="Whether all advertised scan stages completed")
-    scan_errors: List[str] = Field(default_factory=list, description="Sanitized scan-stage failures")
+    scan_complete: bool = Field(
+        True,
+        description="Whether all supported scan stages completed successfully",
+    )
+    scan_errors: List[str] = Field(
+        default_factory=list,
+        description="Sanitized scan-stage failures",
+    )
 
 
 class PostureGrade(str, Enum):

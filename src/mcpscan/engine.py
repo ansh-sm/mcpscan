@@ -28,10 +28,13 @@ class SecurityEngine:
         disabled_rules: Optional[List[str]] = None,
     ) -> AssessmentReport:
         """Run registered rules against the manifest and generate an AssessmentReport."""
+        scan_errors = list(manifest.scan_errors)
+
         findings: List[Finding] = self.registry.run_all(
             manifest,
             enabled_rules=enabled_rules,
             disabled_rules=disabled_rules,
+            errors=scan_errors,
         )
 
         # Calculate composite score starting from 100
@@ -70,4 +73,6 @@ class SecurityEngine:
             resources_count=len(manifest.resources),
             prompts_count=len(manifest.prompts),
             scan_timestamp=datetime.now(timezone.utc).isoformat(),
+            scan_complete=manifest.scan_complete and not scan_errors,
+            scan_errors=scan_errors,
         )

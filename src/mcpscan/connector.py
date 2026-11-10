@@ -73,49 +73,62 @@ class MCPConnector:
             "version": getattr(server_info_obj, "version", "unknown") if server_info_obj else "unknown",
         }
         capabilities = getattr(initialized, "capabilities", None)
-        cap_dict: Dict[str, Any] = capabilities.model_dump() if hasattr(capabilities, "model_dump") else {}
+        if hasattr(capabilities, "model_dump"):
+            cap_dict: Dict[str, Any] = capabilities.model_dump()
+        elif isinstance(capabilities, dict):
+            cap_dict = capabilities
+        else:
+            cap_dict = {}
+
+        has_tools = bool(cap_dict.get("tools") is not None or getattr(capabilities, "tools", None) is not None)
+        has_resources = bool(cap_dict.get("resources") is not None or getattr(capabilities, "resources", None) is not None)
+        has_prompts = bool(cap_dict.get("prompts") is not None or getattr(capabilities, "prompts", None) is not None)
+
         errors: List[str] = []
 
         tools = []
-        try:
-            result = await session.list_tools()
-            for tool in result.tools:
-                schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})
-                if hasattr(schema, "model_dump"):
-                    schema = schema.model_dump()
-                elif not isinstance(schema, dict):
-                    schema = dict(schema) if schema else {}
-                tools.append({"name": tool.name, "description": tool.description or "", "inputSchema": schema})
-        except Exception as exc:
-            errors.append(f"tools enumeration failed ({type(exc).__name__})")
+        if has_tools:
+            try:
+                result = await session.list_tools()
+                for tool in result.tools:
+                    schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})
+                    if hasattr(schema, "model_dump"):
+                        schema = schema.model_dump()
+                    elif not isinstance(schema, dict):
+                        schema = dict(schema) if schema else {}
+                    tools.append({"name": tool.name, "description": tool.description or "", "inputSchema": schema})
+            except Exception as exc:
+                errors.append(f"tools enumeration failed ({type(exc).__name__})")
 
         resources = []
-        try:
-            result = await session.list_resources()
-            for resource in result.resources:
-                resources.append({
-                    "uri": str(resource.uri),
-                    "name": resource.name or "",
-                    "description": resource.description or "",
-                    "mimeType": getattr(resource, "mimeType", None),
-                })
-        except Exception as exc:
-            errors.append(f"resources enumeration failed ({type(exc).__name__})")
+        if has_resources:
+            try:
+                result = await session.list_resources()
+                for resource in result.resources:
+                    resources.append({
+                        "uri": str(resource.uri),
+                        "name": resource.name or "",
+                        "description": resource.description or "",
+                        "mimeType": getattr(resource, "mimeType", None),
+                    })
+            except Exception as exc:
+                errors.append(f"resources enumeration failed ({type(exc).__name__})")
 
         prompts = []
-        try:
-            result = await session.list_prompts()
-            for prompt in result.prompts:
-                prompts.append({
-                    "name": prompt.name,
-                    "description": prompt.description or "",
-                    "arguments": [
-                        {"name": arg.name, "description": arg.description or "", "required": getattr(arg, "required", False)}
-                        for arg in getattr(prompt, "arguments", []) or []
-                    ],
-                })
-        except Exception as exc:
-            errors.append(f"prompts enumeration failed ({type(exc).__name__})")
+        if has_prompts:
+            try:
+                result = await session.list_prompts()
+                for prompt in result.prompts:
+                    prompts.append({
+                        "name": prompt.name,
+                        "description": prompt.description or "",
+                        "arguments": [
+                            {"name": arg.name, "description": arg.description or "", "required": getattr(arg, "required", False)}
+                            for arg in getattr(prompt, "arguments", []) or []
+                        ],
+                    })
+            except Exception as exc:
+                errors.append(f"prompts enumeration failed ({type(exc).__name__})")
 
         return ServerManifest(
             server_info=server_info,
