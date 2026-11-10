@@ -1,8 +1,15 @@
 """Security posture evaluation and scoring engine."""
 
-from datetime import datetime, timezone
-from typing import List, Optional
-from mcpscan.models import AssessmentReport, Finding, PostureGrade, ServerManifest, Severity
+from datetime import UTC, datetime
+
+from mcpscan.config import compute_finding_fingerprint
+from mcpscan.models import (
+    AssessmentReport,
+    Finding,
+    PostureGrade,
+    ServerManifest,
+    Severity,
+)
 from mcpscan.rules import registry
 
 
@@ -24,18 +31,35 @@ class SecurityEngine:
     def audit(
         self,
         manifest: ServerManifest,
-        enabled_rules: Optional[List[str]] = None,
-        disabled_rules: Optional[List[str]] = None,
+        enabled_rules: list[str] | None = None,
+        disabled_rules: list[str] | None = None,
+        suppressed_fingerprints: set[str] | None = None,
     ) -> AssessmentReport:
         """Run registered rules against the manifest and generate an AssessmentReport."""
         scan_errors = list(manifest.scan_errors)
 
-        findings: List[Finding] = self.registry.run_all(
+        all_findings: list[Finding] = self.registry.run_all(
             manifest,
             enabled_rules=enabled_rules,
             disabled_rules=disabled_rules,
             errors=scan_errors,
         )
+
+        # Filter out suppressed findings
+        suppressed_set = suppressed_fingerprints or set()
+        findings: list[Finding] = []
+        suppressed_count = 0
+
+        for f in all_findings:
+            fp = compute_finding_fingerprint(
+                f.rule_id,
+                f.location.target_name,
+                f.location.path,
+            )
+            if fp in suppressed_set:
+                suppressed_count += 1
+            else:
+                findings.append(f)
 
         # Calculate composite score starting from 100
         score = 100
@@ -72,7 +96,8 @@ class SecurityEngine:
             tools_count=len(manifest.tools),
             resources_count=len(manifest.resources),
             prompts_count=len(manifest.prompts),
-            scan_timestamp=datetime.now(timezone.utc).isoformat(),
+            scan_timestamp=datetime.now(UTC).isoformat(),
             scan_complete=manifest.scan_complete and not scan_errors,
             scan_errors=scan_errors,
+            suppressed_count=suppressed_count,
         )
