@@ -1,8 +1,10 @@
 """OASIS SARIF 2.1.0 document generator for CI/CD integrations."""
 
 import json
-from typing import Any, Dict, List
+from typing import Any
+
 from mcpscan import __version__
+from mcpscan.config import compute_finding_fingerprint
 from mcpscan.models import AssessmentReport, Severity
 
 
@@ -21,13 +23,13 @@ class SarifReporter:
         Severity.INFO: "none",
     }
 
-    def generate(self, report: AssessmentReport) -> Dict[str, Any]:
+    def generate(self, report: AssessmentReport) -> dict[str, Any]:
         """Convert an AssessmentReport into a valid SARIF 2.1.0 dictionary."""
         # 1. Build distinct rules list
-        rules_map: Dict[str, Dict[str, Any]] = {}
+        rules_map: dict[str, dict[str, Any]] = {}
         for finding in report.findings:
             if finding.rule_id not in rules_map:
-                sarif_rule: Dict[str, Any] = {
+                sarif_rule: dict[str, Any] = {
                     "id": finding.rule_id,
                     "name": finding.title,
                     "shortDescription": {"text": finding.title},
@@ -46,9 +48,14 @@ class SarifReporter:
                 rules_map[finding.rule_id] = sarif_rule
 
         # 2. Build results list
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for finding in report.findings:
-            result_item: Dict[str, Any] = {
+            fingerprint = compute_finding_fingerprint(
+                finding.rule_id,
+                finding.location.target_name,
+                finding.location.path,
+            )
+            result_item: dict[str, Any] = {
                 "ruleId": finding.rule_id,
                 "level": self.SEVERITY_TO_SARIF_LEVEL.get(finding.severity, "warning"),
                 "message": {
@@ -76,11 +83,17 @@ class SarifReporter:
                         ],
                     }
                 ],
+                "partialFingerprints": {
+                    "mcpscan/v1": fingerprint,
+                },
+                "properties": {
+                    "confidence": finding.confidence.value,
+                },
             }
             results.append(result_item)
 
         # 3. Build invocation with honest execution status
-        invocation: Dict[str, Any] = {
+        invocation: dict[str, Any] = {
             "executionSuccessful": report.scan_complete,
             "endTimeUtc": report.scan_timestamp,
         }
@@ -95,7 +108,7 @@ class SarifReporter:
             ]
 
         # 4. Assemble complete SARIF 2.1.0 document
-        sarif_doc: Dict[str, Any] = {
+        sarif_doc: dict[str, Any] = {
             "$schema": self.SARIF_SCHEMA,
             "version": self.SARIF_VERSION,
             "runs": [

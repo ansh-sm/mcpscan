@@ -1,14 +1,15 @@
 """JSON security audit report generator for pipeline automation and SIEM ingestion."""
 
 import json
-from typing import Any, Dict
+from typing import Any
+
 from mcpscan.models import AssessmentReport
 
 
 class JsonReporter:
     """Serializes complete AssessmentReport objects to standard JSON."""
 
-    def generate(self, report: AssessmentReport) -> Dict[str, Any]:
+    def generate(self, report: AssessmentReport) -> dict[str, Any]:
         """Convert AssessmentReport into a dictionary."""
         return report.model_dump()
 

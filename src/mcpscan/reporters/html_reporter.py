@@ -1,9 +1,9 @@
 """Standalone HTML report generator for visual executive dashboards."""
 
 import html
-from typing import Dict, List
+
 from mcpscan import __version__
-from mcpscan.models import AssessmentReport, Finding, PostureGrade, Severity
+from mcpscan.models import AssessmentReport, PostureGrade, Severity
 
 
 class HtmlReporter:
@@ -45,7 +45,7 @@ class HtmlReporter:
             </div>
             """
 
-        rows_html: List[str] = []
+        rows_html: list[str] = []
         for f in report.findings:
             sev_fg, sev_bg = self.SEVERITY_BADGES.get(f.severity, ("#374151", "#e5e7eb"))
             evidence_snippet = (
@@ -85,6 +85,7 @@ class HtmlReporter:
                             <strong>Remediation:</strong> {html.escape(f.remediation)}
                         </div>
                         <div class="taxonomy-tags">
+                            <span class="tax-badge" style="background-color: #1e3a5f; color: #60a5fa;">Confidence: {html.escape(f.confidence.value)}</span>
                             {cwe_badge}
                             {owasp_badge}
                         </div>

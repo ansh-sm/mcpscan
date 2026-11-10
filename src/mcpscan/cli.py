@@ -1,21 +1,21 @@
 """Command Line Interface for mcpscan."""
 
 import asyncio
-import sys
-from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from mcpscan import __version__
+from mcpscan.config import compute_finding_fingerprint, load_config
 from mcpscan.connector import MCPConnector, MCPConnectorError
 from mcpscan.engine import SecurityEngine
-from mcpscan.reporters.terminal import TerminalReporter
-from mcpscan.reporters.sarif import SarifReporter
-from mcpscan.reporters.json_reporter import JsonReporter
 from mcpscan.reporters.html_reporter import HtmlReporter
+from mcpscan.reporters.json_reporter import JsonReporter
 from mcpscan.reporters.markdown_reporter import MarkdownReporter
+from mcpscan.reporters.sarif import SarifReporter
+from mcpscan.reporters.terminal import TerminalReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -39,7 +39,7 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None,
         "--version",
         "-v",
@@ -49,41 +49,40 @@ def main(
     ),
 ):
     """MCP Server Security Posture Scanner."""
-    pass
 
 
 @app.command()
 def scan(
-    command: Optional[str] = typer.Option(
+    command: str | None = typer.Option(
         None,
         "--command",
         "-c",
         help="Command to spawn target MCP server over stdio (e.g. 'python server.py' or 'node build/index.js').",
     ),
-    sse_url: Optional[str] = typer.Option(
+    sse_url: str | None = typer.Option(
         None,
         "--sse",
         help="Remote SSE endpoint URL of target MCP server (e.g. 'http://localhost:8000/sse').",
     ),
-    sarif_output: Optional[str] = typer.Option(
+    sarif_output: str | None = typer.Option(
         None,
         "--sarif",
         "-s",
         help="Path to export OASIS SARIF 2.1.0 security report.",
     ),
-    json_output: Optional[str] = typer.Option(
+    json_output: str | None = typer.Option(
         None,
         "--json",
         "-j",
         help="Path to export raw JSON security report.",
     ),
-    html_output: Optional[str] = typer.Option(
+    html_output: str | None = typer.Option(
         None,
         "--html",
         "-H",
         help="Path to export visual HTML security report dashboard.",
     ),
-    markdown_output: Optional[str] = typer.Option(
+    markdown_output: str | None = typer.Option(
         None,
         "--markdown",
         "-M",
@@ -100,15 +99,21 @@ def scan(
         "--fail-under",
         help="Exit with non-zero exit code if score falls below this threshold (for CI/CD gates).",
     ),
-    select_rules: Optional[str] = typer.Option(
+    select_rules: str | None = typer.Option(
         None,
         "--select",
         help="Comma-separated list of Rule IDs to execute (e.g. 'MCP-SEC-001,MCP-SEC-002').",
     ),
-    ignore_rules: Optional[str] = typer.Option(
+    ignore_rules: str | None = typer.Option(
         None,
         "--ignore",
         help="Comma-separated list of Rule IDs to skip.",
+    ),
+    config_file: str | None = typer.Option(
+        None,
+        "--config",
+        "-C",
+        help="Path to .mcpscan.yml configuration file.",
     ),
 ):
     """Scan an MCP server over stdio or SSE and audit its security posture."""
@@ -119,6 +124,28 @@ def scan(
     if timeout <= 0:
         raise typer.BadParameter("--timeout must be greater than zero.")
 
+    # Load configuration (.mcpscan.yml)
+    try:
+        cfg = load_config(explicit_path=config_file)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Config file error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[bold red]Configuration error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    # CLI flags override config defaults
+    effective_timeout = timeout if timeout != 15 or not config_file else cfg.timeout
+    effective_fail_under = fail_under if fail_under != 70 or not config_file else cfg.fail_under
+
+    sarif_output = sarif_output or cfg.output.sarif
+    json_output = json_output or cfg.output.json
+    html_output = html_output or cfg.output.html
+    markdown_output = markdown_output or cfg.output.markdown
+
+    # Active finding suppressions
+    suppressed_fps = {s.fingerprint for s in cfg.suppress if not s.is_expired}
+
     target_str = command if command else sse_url
     transport_type = "stdio" if command else "SSE"
 
@@ -126,7 +153,7 @@ def scan(
         Panel(
             f"[bold cyan]Target:[/bold cyan] {target_str}\n"
             f"[bold cyan]Transport:[/bold cyan] {transport_type}\n"
-            f"[bold cyan]Timeout:[/bold cyan] {timeout}s",
+            f"[bold cyan]Timeout:[/bold cyan] {effective_timeout}s",
             title="[bold green]mcpscan Security Audit[/bold green]",
             border_style="cyan",
         )
@@ -134,7 +161,7 @@ def scan(
 
     console.print("[dim]Connecting and negotiating capabilities...[/dim]")
 
-    connector = MCPConnector(timeout=float(timeout))
+    connector = MCPConnector(timeout=float(effective_timeout))
     try:
         if command:
             manifest = asyncio.run(connector.connect_stdio(command))
@@ -144,18 +171,30 @@ def scan(
             console.print("[bold red]Error: No valid transport specified.[/bold red]")
             raise typer.Exit(code=1)
     except MCPConnectorError as e:
-        console.print(Panel(f"[bold red]Connection Error:[/bold red] {str(e)}", border_style="red"))
+        console.print(Panel(f"[bold red]Connection Error:[/bold red] {e!s}", border_style="red"))
         raise typer.Exit(code=1)
 
-    # Parse rule filters
-    enabled_list = [r.strip() for r in select_rules.split(",") if r.strip()] if select_rules else None
-    disabled_list = [r.strip() for r in ignore_rules.split(",") if r.strip()] if ignore_rules else None
+    # Parse rule filters (CLI takes precedence over config)
+    if select_rules:
+        enabled_list = [r.strip() for r in select_rules.split(",") if r.strip()]
+    elif cfg.select:
+        enabled_list = cfg.select
+    else:
+        enabled_list = None
+
+    if ignore_rules:
+        disabled_list = [r.strip() for r in ignore_rules.split(",") if r.strip()]
+    elif cfg.ignore:
+        disabled_list = cfg.ignore
+    else:
+        disabled_list = None
 
     # Execute Security Audit
     report = engine.audit(
         manifest,
         enabled_rules=enabled_list,
         disabled_rules=disabled_list,
+        suppressed_fingerprints=suppressed_fps,
     )
 
     # Render Terminal Report
@@ -169,7 +208,7 @@ def scan(
             sarif_reporter.save(report, sarif_output)
             console.print(f"[bold green]✓[/bold green] SARIF 2.1.0 report exported to: [bold cyan]{sarif_output}[/bold cyan]\n")
         except Exception as e:
-            console.print(f"[bold red]Failed to write SARIF report:[/bold red] {str(e)}")
+            console.print(f"[bold red]Failed to write SARIF report:[/bold red] {e!s}")
             export_failed = True
 
     # Export JSON if requested
@@ -178,7 +217,7 @@ def scan(
             json_reporter.save(report, json_output)
             console.print(f"[bold green]✓[/bold green] JSON report exported to: [bold cyan]{json_output}[/bold cyan]\n")
         except Exception as e:
-            console.print(f"[bold red]Failed to write JSON report:[/bold red] {str(e)}")
+            console.print(f"[bold red]Failed to write JSON report:[/bold red] {e!s}")
             export_failed = True
 
     # Export HTML if requested
@@ -187,7 +226,7 @@ def scan(
             html_reporter.save(report, html_output)
             console.print(f"[bold green]✓[/bold green] Visual HTML Dashboard exported to: [bold cyan]{html_output}[/bold cyan]\n")
         except Exception as e:
-            console.print(f"[bold red]Failed to write HTML report:[/bold red] {str(e)}")
+            console.print(f"[bold red]Failed to write HTML report:[/bold red] {e!s}")
             export_failed = True
 
     # Export Markdown if requested
@@ -196,7 +235,7 @@ def scan(
             markdown_reporter.save(report, markdown_output)
             console.print(f"[bold green]✓[/bold green] Markdown report exported to: [bold cyan]{markdown_output}[/bold cyan]\n")
         except Exception as e:
-            console.print(f"[bold red]Failed to write Markdown report:[/bold red] {str(e)}")
+            console.print(f"[bold red]Failed to write Markdown report:[/bold red] {e!s}")
             export_failed = True
 
     if export_failed:
@@ -213,9 +252,9 @@ def scan(
         raise typer.Exit(code=3)
 
     # Check CI/CD Threshold
-    if report.score < fail_under:
+    if report.score < effective_fail_under:
         console.print(
-            f"[bold red]CI/CD Gate Failed:[/bold red] Score [bold]{report.score}[/bold] is below threshold of [bold]{fail_under}[/bold].\n"
+            f"[bold red]CI/CD Gate Failed:[/bold red] Score [bold]{report.score}[/bold] is below threshold of [bold]{effective_fail_under}[/bold].\n"
         )
         raise typer.Exit(code=2)
 
@@ -234,6 +273,7 @@ def list_rules():
     )
     table.add_column("Rule ID", style="bold yellow", width=14)
     table.add_column("Severity", justify="center", width=10)
+    table.add_column("Confidence", justify="center", width=12)
     table.add_column("Title", style="bold white", min_width=30)
     table.add_column("CWE", style="dim", width=18)
     table.add_column("OWASP LLM", style="dim", width=14)
@@ -245,12 +285,21 @@ def list_rules():
         "LOW": "cyan",
         "INFO": "dim",
     }
+    confidence_styles = {
+        "HIGH": "bold green",
+        "MEDIUM": "yellow",
+        "LOW": "dim cyan",
+    }
 
     for rule in registry.registered_rules:
         sev_style = severity_styles.get(rule.severity.value, "white")
+        conf_val = getattr(rule, "default_confidence", None)
+        conf_str = conf_val.value if conf_val else "MEDIUM"
+        conf_style = confidence_styles.get(conf_str, "white")
         table.add_row(
             rule.rule_id,
             f"[{sev_style}]{rule.severity.value}[/{sev_style}]",
+            f"[{conf_style}]{conf_str}[/{conf_style}]",
             rule.title,
             rule.cwe.split(":")[0] if rule.cwe else "—",
             rule.owasp_llm.split(":")[0] if rule.owasp_llm else "—",
@@ -259,6 +308,21 @@ def list_rules():
     console.print()
     console.print(table)
     console.print(f"\n[dim]Total: {len(registry.registered_rules)} rules registered[/dim]\n")
+
+
+@app.command("fingerprint")
+def fingerprint(
+    rule_id: str = typer.Argument(..., help="Rule ID (e.g. MCP-SEC-002)"),
+    target: str = typer.Argument(..., help="Target component name (e.g. tool_name.param)"),
+    path: str | None = typer.Option(None, "--path", "-p", help="JSON path within the schema/manifest"),
+):
+    """Compute a suppression fingerprint for a finding to use in .mcpscan.yml."""
+    fp = compute_finding_fingerprint(rule_id, target, path)
+    console.print(f"\n[bold cyan]Finding Fingerprint:[/bold cyan] [bold green]{fp}[/bold green]")
+    console.print("\n[dim]To suppress this finding in .mcpscan.yml:[/dim]")
+    console.print("[dim]suppress:[/dim]")
+    console.print(f'[dim]  - fingerprint: "{fp}"[/dim]')
+    console.print('[dim]    reason: "Accepted risk / validated boundary"[/dim]\n')
 
 
 if __name__ == "__main__":

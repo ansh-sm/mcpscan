@@ -28,6 +28,12 @@ class TerminalReporter:
         Severity.INFO: "dim white",
     }
 
+    CONFIDENCE_STYLES = {
+        "HIGH": "bold green",
+        "MEDIUM": "yellow",
+        "LOW": "dim cyan",
+    }
+
     def __init__(self, console: Console = None):
         self.console = console or Console()
 
@@ -52,6 +58,8 @@ class TerminalReporter:
         score_text.append(f"{report.server_name} (v{report.server_version})  |  ", style="bold cyan")
         score_text.append("Surface: ", style="dim")
         score_text.append(f"{report.tools_count} Tools, {report.resources_count} Resources, {report.prompts_count} Prompts", style="bold")
+        if report.suppressed_count > 0:
+            score_text.append(f"  |  Suppressed: {report.suppressed_count}", style="dim yellow")
 
         self.console.print(
             Panel(
@@ -101,6 +109,7 @@ class TerminalReporter:
         )
 
         table.add_column("Severity", width=12, justify="center")
+        table.add_column("Confidence", width=12, justify="center")
         table.add_column("Rule ID", width=14)
         table.add_column("Component", width=22)
         table.add_column("Finding Summary & Remediation", ratio=1)
@@ -108,6 +117,10 @@ class TerminalReporter:
         for finding in report.findings:
             sev_style = self.SEVERITY_STYLES.get(finding.severity, "white")
             sev_badge = Text(f" {finding.severity.value} ", style=sev_style)
+
+            conf_val = finding.confidence.value
+            conf_style = self.CONFIDENCE_STYLES.get(conf_val, "white")
+            conf_badge = Text(conf_val, style=conf_style)
 
             location_str = f"{finding.location.target_name}\n[dim]{finding.location.path or ''}[/dim]"
 
@@ -120,6 +133,7 @@ class TerminalReporter:
 
             table.add_row(
                 sev_badge,
+                conf_badge,
                 finding.rule_id,
                 location_str,
                 details,

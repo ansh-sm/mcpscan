@@ -3,7 +3,7 @@
 import asyncio
 import shlex
 import sys
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
@@ -33,7 +33,7 @@ class MCPConnector:
         params = StdioServerParameters(command=parts[0], args=parts[1:], env=None)
         try:
             return await asyncio.wait_for(self._run_stdio_session(params), timeout=self.timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise MCPConnectorError(f"Connection timed out after {self.timeout}s.") from exc
         except Exception as exc:
             if isinstance(exc, MCPConnectorError):
@@ -47,7 +47,7 @@ class MCPConnector:
             raise MCPConnectorError("Invalid SSE URL. Must begin with http:// or https://")
         try:
             return await asyncio.wait_for(self._run_sse_session(sse_url), timeout=self.timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise MCPConnectorError(f"SSE connection timed out after {self.timeout}s.") from exc
         except Exception as exc:
             if isinstance(exc, MCPConnectorError):
@@ -74,7 +74,7 @@ class MCPConnector:
         }
         capabilities = getattr(initialized, "capabilities", None)
         if hasattr(capabilities, "model_dump"):
-            cap_dict: Dict[str, Any] = capabilities.model_dump()
+            cap_dict: dict[str, Any] = capabilities.model_dump()
         elif isinstance(capabilities, dict):
             cap_dict = capabilities
         else:
@@ -84,7 +84,7 @@ class MCPConnector:
         has_resources = bool(cap_dict.get("resources") is not None or getattr(capabilities, "resources", None) is not None)
         has_prompts = bool(cap_dict.get("prompts") is not None or getattr(capabilities, "prompts", None) is not None)
 
-        errors: List[str] = []
+        errors: list[str] = []
 
         tools = []
         if has_tools:

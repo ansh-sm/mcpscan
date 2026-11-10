@@ -4,7 +4,7 @@ Generates clean, portable Markdown reports suitable for GitHub PR reviews,
 Slack/Discord sharing, and static documentation embedding.
 """
 
-from typing import Dict, List
+
 from mcpscan.models import AssessmentReport, Finding, PostureGrade, Severity
 
 
@@ -31,7 +31,7 @@ class MarkdownReporter:
 
     def generate(self, report: AssessmentReport) -> str:
         """Convert AssessmentReport into a Markdown-formatted string."""
-        sections: List[str] = []
+        sections: list[str] = []
 
         # Header
         sections.append(self._render_header(report))
@@ -105,12 +105,16 @@ class MarkdownReporter:
             f"| **Score** | {report.score}/100 |",
             f"| **Scan Status** | {'COMPLETE' if report.scan_complete else 'INCOMPLETE'} |",
             f"| **Total Findings** | {finding_count} |",
+        ]
+        if report.suppressed_count > 0:
+            lines.append(f"| **Suppressed Findings** | {report.suppressed_count} |")
+        lines.extend([
             f"| **Critical** | {severity_counts.get(Severity.CRITICAL, 0)} |",
             f"| **High** | {severity_counts.get(Severity.HIGH, 0)} |",
             f"| **Medium** | {severity_counts.get(Severity.MEDIUM, 0)} |",
             f"| **Low** | {severity_counts.get(Severity.LOW, 0)} |",
             f"| **Info** | {severity_counts.get(Severity.INFO, 0)} |",
-        ]
+        ])
         return "\n".join(lines) + "\n"
 
     def _render_attack_surface(self, report: AssessmentReport) -> str:
@@ -126,7 +130,7 @@ class MarkdownReporter:
 
     def _render_severity_breakdown(self, report: AssessmentReport) -> str:
         severity_counts = self._count_by_severity(report.findings)
-        bars: List[str] = []
+        bars: list[str] = []
         for sev in [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]:
             count = severity_counts.get(sev, 0)
             if count > 0:
@@ -142,15 +146,16 @@ class MarkdownReporter:
     def _render_findings_table(self, report: AssessmentReport) -> str:
         lines = [
             "\n## 🔍 Findings Overview\n",
-            "| # | Rule ID | Severity | Title | Location |",
-            "| :---: | :--- | :---: | :--- | :--- |",
+            "| # | Rule ID | Severity | Confidence | Title | Location |",
+            "| :---: | :--- | :---: | :---: | :--- | :--- |",
         ]
 
         for i, finding in enumerate(report.findings, 1):
             sev = self.SEVERITY_INDICATORS.get(finding.severity, finding.severity.value)
             location = f"`{finding.location.target_name}`"
+            conf = finding.confidence.value
             lines.append(
-                f"| {i} | `{finding.rule_id}` | {sev} | {finding.title} | {location} |"
+                f"| {i} | `{finding.rule_id}` | {sev} | {conf} | {finding.title} | {location} |"
             )
 
         return "\n".join(lines) + "\n"
@@ -163,6 +168,7 @@ class MarkdownReporter:
             lines.append(f"### {i}. {finding.title}\n")
             lines.append(f"- **Rule:** `{finding.rule_id}`")
             lines.append(f"- **Severity:** {sev}")
+            lines.append(f"- **Confidence:** {finding.confidence.value}")
             lines.append(f"- **Location:** `{finding.location.target_type}` → `{finding.location.target_name}`")
             if finding.cwe:
                 lines.append(f"- **CWE:** {finding.cwe}")
@@ -184,8 +190,8 @@ class MarkdownReporter:
         )
 
     @staticmethod
-    def _count_by_severity(findings: List[Finding]) -> Dict[Severity, int]:
-        counts: Dict[Severity, int] = {}
+    def _count_by_severity(findings: list[Finding]) -> dict[Severity, int]:
+        counts: dict[Severity, int] = {}
         for f in findings:
             counts[f.severity] = counts.get(f.severity, 0) + 1
         return counts
