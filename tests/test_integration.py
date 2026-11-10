@@ -3,10 +3,12 @@
 import json
 import os
 import sys
+
 import pytest
+
 from mcpscan.connector import MCPConnector
 from mcpscan.engine import SecurityEngine
-from mcpscan.models import PostureGrade, Severity
+from mcpscan.models import PostureGrade
 from mcpscan.reporters.sarif import SarifReporter
 
 CMD_SMOKE_SERVER = (
@@ -53,12 +55,12 @@ async def test_e2e_vulnerable_server(tmp_path):
     engine = SecurityEngine()
     report = engine.audit(manifest)
 
-    assert report.score < 70
-    assert len(report.findings) >= 2
+    assert report.score < 40
+    assert len(report.findings) >= 8
 
     rule_ids = {f.rule_id for f in report.findings}
-    assert "MCP-SEC-001" in rule_ids
-    assert "MCP-SEC-002" in rule_ids
+    for i in range(1, 9):
+        assert f"MCP-SEC-{i:03d}" in rule_ids, f"Expected MCP-SEC-{i:03d} to trigger"
 
     # SARIF generation verification
     sarif_path = tmp_path / "vuln.sarif"
@@ -68,4 +70,8 @@ async def test_e2e_vulnerable_server(tmp_path):
     with open(sarif_path, "r", encoding="utf-8") as f:
         sarif_data = json.load(f)
     assert sarif_data["version"] == "2.1.0"
-    assert len(sarif_data["runs"][0]["results"]) >= 2
+    assert len(sarif_data["runs"][0]["results"]) >= 8
+    # Verify SARIF contains partialFingerprints and confidence
+    first_result = sarif_data["runs"][0]["results"][0]
+    assert "partialFingerprints" in first_result
+    assert "confidence" in first_result["properties"]

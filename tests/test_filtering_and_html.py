@@ -1,9 +1,10 @@
 """Integration tests for HTML reporting and rule filtering flags."""
 
-import json
 import os
 import sys
+
 import pytest
+
 from mcpscan.connector import MCPConnector
 from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.html_reporter import HtmlReporter

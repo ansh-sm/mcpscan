@@ -57,6 +57,47 @@ mcpscan scan -c "node build/index.js" --sarif results.sarif --fail-under 80
 mcpscan list-rules
 ```
 
+### 5. Generate Finding Fingerprint for Waivers
+
+```bash
+mcpscan fingerprint MCP-SEC-002 system_executor.command --path inputSchema.command
+```
+
+---
+
+## ⚙️ Configuration (`.mcpscan.yml`)
+
+`mcpscan` automatically detects `.mcpscan.yml` or `.mcpscan.yaml` in your project root, or accepts an explicit config file via `--config`:
+
+```yaml
+# Minimum posture score required for CI/CD gates (default: 70)
+fail_under: 80
+
+# Connection and enumeration timeout in seconds (default: 15)
+timeout: 20
+
+# Execute only specific rules (optional)
+select:
+  - MCP-SEC-001
+  - MCP-SEC-002
+  - MCP-SEC-004
+
+# Skip specific rules (optional)
+ignore:
+  - MCP-SEC-005
+
+# Default export paths
+output:
+  sarif: reports/security-posture.sarif
+  markdown: reports/security-posture.md
+
+# Silenced finding fingerprints with optional expiration dates
+suppress:
+  - fingerprint: "38d150cb44400ec47ce1bc6e6f47738ee6857d4d622a57962c6488d55169a849"
+    reason: "Maintenance CLI tool is restricted to internal staff"
+    expires: "2026-12-31"
+```
+
 ---
 
 ## 🚦 Exit Codes

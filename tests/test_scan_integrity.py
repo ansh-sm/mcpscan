@@ -1,6 +1,7 @@
 """Tests verifying scan integrity, honest reporting, error handling, and CLI exit codes."""
 
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from typer.testing import CliRunner
 
@@ -9,8 +10,6 @@ from mcpscan.connector import MCPConnector
 from mcpscan.engine import SecurityEngine
 from mcpscan.models import (
     AssessmentReport,
-    Finding,
-    FindingLocation,
     PostureGrade,
     ServerManifest,
     Severity,
@@ -18,7 +17,6 @@ from mcpscan.models import (
 from mcpscan.reporters.html_reporter import HtmlReporter
 from mcpscan.reporters.sarif import SarifReporter
 from mcpscan.rules.base import BaseRule, RuleRegistry
-
 
 runner = CliRunner()
 
