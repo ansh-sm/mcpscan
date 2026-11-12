@@ -71,6 +71,63 @@ Compare a baseline scan against a PR scan snapshot to detect newly introduced vu
 mcpscan diff baseline.json current.json --fail-on-regression --markdown pr_comment.md
 ```
 
+### 7. Run with Docker
+
+Run without installing Python locally using the official zero-dependency container:
+
+```bash
+docker run --rm -v $(pwd):/workspace ghcr.io/ansh-sm/mcpscan:latest scan -c "python server.py" --sarif results.sarif
+```
+
+---
+
+## 🤖 GitHub Action Integration
+
+Add `mcpscan` directly to your repository workflow (`.github/workflows/mcp-security.yml`):
+
+```yaml
+name: MCP Security Gate
+
+on: [push, pull_request]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit MCP Server
+        uses: ansh-sm/mcpscan@v0.1.0
+        with:
+          command: "python server.py"
+          fail-under: "80"
+          sarif-output: "results.sarif"
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+```
+
+---
+
+## 🪝 Pre-commit Hook
+
+Add `mcpscan` to your `.pre-commit-config.yaml` to audit schemas before every commit:
+
+```yaml
+repos:
+  - repo: https://github.com/ansh-sm/mcpscan
+    rev: v0.1.0
+    hooks:
+      - id: mcpscan
+        args: ["--fail-under", "80"]
+```
+
 ---
 
 ## ⚙️ Configuration (`.mcpscan.yml`)
