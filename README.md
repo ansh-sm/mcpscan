@@ -63,6 +63,14 @@ mcpscan list-rules
 mcpscan fingerprint MCP-SEC-002 system_executor.command --path inputSchema.command
 ```
 
+### 6. Compare Scans & Gate PR Regressions (`mcpscan diff`)
+
+Compare a baseline scan against a PR scan snapshot to detect newly introduced vulnerabilities and block score regressions in CI:
+
+```bash
+mcpscan diff baseline.json current.json --fail-on-regression --markdown pr_comment.md
+```
+
 ---
 
 ## ⚙️ Configuration (`.mcpscan.yml`)

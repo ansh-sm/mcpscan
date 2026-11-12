@@ -10,12 +10,15 @@ from rich.table import Table
 from mcpscan import __version__
 from mcpscan.config import compute_finding_fingerprint, load_config
 from mcpscan.connector import MCPConnector, MCPConnectorError
+from mcpscan.diff import compute_diff, load_report_from_file
 from mcpscan.engine import SecurityEngine
 from mcpscan.reporters.html_reporter import HtmlReporter
 from mcpscan.reporters.json_reporter import JsonReporter
+from mcpscan.reporters.markdown_diff import MarkdownDiffReporter
 from mcpscan.reporters.markdown_reporter import MarkdownReporter
 from mcpscan.reporters.sarif import SarifReporter
 from mcpscan.reporters.terminal import TerminalReporter
+from mcpscan.reporters.terminal_diff import TerminalDiffReporter
 
 app = typer.Typer(
     name="mcpscan",
@@ -24,6 +27,8 @@ app = typer.Typer(
 )
 console = Console()
 reporter = TerminalReporter(console)
+terminal_diff_reporter = TerminalDiffReporter(console)
+markdown_diff_reporter = MarkdownDiffReporter()
 sarif_reporter = SarifReporter()
 json_reporter = JsonReporter()
 html_reporter = HtmlReporter()
@@ -323,6 +328,92 @@ def fingerprint(
     console.print("[dim]suppress:[/dim]")
     console.print(f'[dim]  - fingerprint: "{fp}"[/dim]')
     console.print('[dim]    reason: "Accepted risk / validated boundary"[/dim]\n')
+
+
+@app.command("diff")
+def diff_command(
+    baseline_report: str = typer.Argument(..., help="Path to baseline scan report JSON."),
+    current_report: str = typer.Argument(..., help="Path to current scan report JSON."),
+    markdown_output: str | None = typer.Option(
+        None,
+        "--markdown",
+        "-M",
+        help="Path to export Markdown diff report (ideal for PR comments).",
+    ),
+    json_output: str | None = typer.Option(
+        None,
+        "--json",
+        "-j",
+        help="Path to export raw JSON diff report.",
+    ),
+    fail_on_regression: bool = typer.Option(
+        False,
+        "--fail-on-regression",
+        help="Exit with code 2 if any new vulnerabilities are introduced or score degraded.",
+    ),
+    fail_under: int | None = typer.Option(
+        None,
+        "--fail-under",
+        help="Exit with code 2 if current scan score falls below this threshold.",
+    ),
+):
+    """Compare two mcpscan JSON reports and analyze posture regressions for CI/CD PR gates."""
+    # 1. Load reports
+    try:
+        baseline = load_report_from_file(baseline_report)
+    except Exception as e:
+        console.print(f"[bold red]Failed to load baseline report:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    try:
+        current = load_report_from_file(current_report)
+    except Exception as e:
+        console.print(f"[bold red]Failed to load current report:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    # 2. Compute delta
+    diff_res = compute_diff(baseline, current)
+
+    # 3. Render terminal scorecard
+    terminal_diff_reporter.render(diff_res)
+
+    # 4. Export Markdown if requested
+    export_failed = False
+    if markdown_output:
+        try:
+            markdown_diff_reporter.save(diff_res, markdown_output)
+            console.print(f"[bold green]✓[/bold green] Markdown diff exported to: [bold cyan]{markdown_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write Markdown diff report:[/bold red] {e}")
+            export_failed = True
+
+    # 5. Export JSON if requested
+    if json_output:
+        try:
+            from pathlib import Path
+            Path(json_output).write_text(diff_res.model_dump_json(indent=2), encoding="utf-8")
+            console.print(f"[bold green]✓[/bold green] JSON diff exported to: [bold cyan]{json_output}[/bold cyan]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to write JSON diff report:[/bold red] {e}")
+            export_failed = True
+
+    if export_failed:
+        raise typer.Exit(code=1)
+
+    # 6. CI/CD Gate evaluations
+    if fail_on_regression and diff_res.has_regressions:
+        console.print(
+            f"[bold red]CI/CD Gate Failed:[/bold red] Posture regression detected "
+            f"({len(diff_res.new_findings)} new finding(s), delta: {diff_res.score_delta} pts).\n"
+        )
+        raise typer.Exit(code=2)
+
+    if fail_under is not None and diff_res.current_score < fail_under:
+        console.print(
+            f"[bold red]CI/CD Gate Failed:[/bold red] Current score [bold]{diff_res.current_score}[/bold] "
+            f"is below threshold of [bold]{fail_under}[/bold].\n"
+        )
+        raise typer.Exit(code=2)
 
 
 if __name__ == "__main__":
