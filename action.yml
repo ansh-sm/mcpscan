@@ -1,0 +1,127 @@
+name: "MCP Security Posture Scanner (mcpscan)"
+description: "Audit Model Context Protocol (MCP) servers for prompt injection, secret leaks, and security risks in CI/CD."
+author: "Ansh"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  command:
+    description: "Command to spawn target MCP server over stdio (e.g. 'python server.py')."
+    required: false
+  sse-url:
+    description: "Remote SSE endpoint URL of target MCP server (e.g. 'http://localhost:8000/sse')."
+    required: false
+  fail-under:
+    description: "Fail the job if posture score falls below this threshold (0-100)."
+    required: false
+    default: "70"
+  sarif-output:
+    description: "File path to save OASIS SARIF 2.1.0 security report."
+    required: false
+    default: "mcpscan-results.sarif"
+  markdown-output:
+    description: "File path to export PR summary Markdown report."
+    required: false
+  html-output:
+    description: "File path to export interactive visual HTML dashboard."
+    required: false
+  json-output:
+    description: "File path to export raw JSON report."
+    required: false
+  config:
+    description: "Explicit path to .mcpscan.yml configuration file."
+    required: false
+  select:
+    description: "Comma-separated list of rule IDs to execute (e.g. 'MCP-SEC-001,MCP-SEC-002')."
+    required: false
+  ignore:
+    description: "Comma-separated list of rule IDs to skip."
+    required: false
+  timeout:
+    description: "Connection and enumeration timeout in seconds."
+    required: false
+    default: "15"
+
+outputs:
+  score:
+    description: "Evaluated security posture score (0-100)."
+    value: "${{ steps.run-scan.outputs.score }}"
+  grade:
+    description: "Calculated letter grade (A+, A, B, C, D, F)."
+    value: "${{ steps.run-scan.outputs.grade }}"
+  findings-count:
+    description: "Total number of security findings detected."
+    value: "${{ steps.run-scan.outputs.findings-count }}"
+  sarif-path:
+    description: "Path to generated SARIF 2.1.0 report."
+    value: "${{ inputs.sarif-output }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install mcpscan
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "mcpscan>=0.1.0" || pip install "${{ github.action_path }}"
+
+    - name: Execute Security Scan
+      id: run-scan
+      shell: bash
+      run: |
+        CMD_ARGS=()
+        if [ -n "${{ inputs.command }}" ]; then
+          CMD_ARGS+=(--command "${{ inputs.command }}")
+        fi
+        if [ -n "${{ inputs.sse-url }}" ]; then
+          CMD_ARGS+=(--sse "${{ inputs.sse-url }}")
+        fi
+        if [ -n "${{ inputs.fail-under }}" ]; then
+          CMD_ARGS+=(--fail-under "${{ inputs.fail-under }}")
+        fi
+        if [ -n "${{ inputs.sarif-output }}" ]; then
+          CMD_ARGS+=(--sarif "${{ inputs.sarif-output }}")
+        fi
+        if [ -n "${{ inputs.markdown-output }}" ]; then
+          CMD_ARGS+=(--markdown "${{ inputs.markdown-output }}")
+        fi
+        if [ -n "${{ inputs.html-output }}" ]; then
+          CMD_ARGS+=(--html "${{ inputs.html-output }}")
+        fi
+        if [ -n "${{ inputs.json-output }}" ]; then
+          CMD_ARGS+=(--json "${{ inputs.json-output }}")
+        fi
+        if [ -n "${{ inputs.config }}" ]; then
+          CMD_ARGS+=(--config "${{ inputs.config }}")
+        fi
+        if [ -n "${{ inputs.select }}" ]; then
+          CMD_ARGS+=(--select "${{ inputs.select }}")
+        fi
+        if [ -n "${{ inputs.ignore }}" ]; then
+          CMD_ARGS+=(--ignore "${{ inputs.ignore }}")
+        fi
+        if [ -n "${{ inputs.timeout }}" ]; then
+          CMD_ARGS+=(--timeout "${{ inputs.timeout }}")
+        fi
+
+        # Always generate temporary JSON for output variable extraction
+        TEMP_JSON="/tmp/mcpscan-internal-output.json"
+        mcpscan scan "${CMD_ARGS[@]}" --json "$TEMP_JSON"
+        SCAN_EXIT_CODE=$?
+
+        if [ -f "$TEMP_JSON" ]; then
+          SCORE=$(python -c "import json; data=json.load(open('$TEMP_JSON')); print(data.get('score', 0))")
+          GRADE=$(python -c "import json; data=json.load(open('$TEMP_JSON')); print(data.get('grade', 'F'))")
+          FINDINGS=$(python -c "import json; data=json.load(open('$TEMP_JSON')); print(len(data.get('findings', [])))")
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "grade=$GRADE" >> $GITHUB_OUTPUT
+          echo "findings-count=$FINDINGS" >> $GITHUB_OUTPUT
+        fi
+
+        exit $SCAN_EXIT_CODE
