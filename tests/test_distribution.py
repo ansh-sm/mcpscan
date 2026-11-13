@@ -66,3 +66,35 @@ def test_dockerignore_contains_critical_exclusions():
     assert ".git" in lines
     assert ".venv" in lines
     assert "tests" in lines
+
+
+def test_contributing_guide_exists():
+    """CONTRIBUTING.md must exist and outline rule development and testing."""
+    guide = REPO_ROOT / "CONTRIBUTING.md"
+    assert guide.is_file(), "CONTRIBUTING.md must exist at repository root"
+    text = guide.read_text(encoding="utf-8")
+    assert "BaseRule" in text
+    assert "pytest" in text
+    assert "Conventional Commits" in text
+
+
+def test_release_workflow_exists():
+    """.github/workflows/release.yml must exist and trigger on version tags."""
+    rel_file = REPO_ROOT / ".github" / "workflows" / "release.yml"
+    assert rel_file.is_file(), "release.yml must exist"
+    data = yaml.safe_load(rel_file.read_text(encoding="utf-8"))
+    assert "build-and-release" in data.get("jobs", {})
+
+
+def test_version_consistency():
+    """mcpscan.__version__ must match pyproject.toml declaration."""
+    import tomllib
+    import mcpscan
+
+    pyproject_file = REPO_ROOT / "pyproject.toml"
+    with open(pyproject_file, "rb") as f:
+        data = tomllib.load(f)
+
+    declared_version = data["project"]["version"]
+    assert mcpscan.__version__ == declared_version == "0.1.0"
+
